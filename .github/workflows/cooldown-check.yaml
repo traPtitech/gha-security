@@ -2,7 +2,10 @@
 # Dependabot / Renovate を使っていないリポジトリや、手元で install して lockfile ごと
 # 上げてくる PR にも効く「PR 時点の cooldown ゲート」。
 #
-# 呼び出し側（pull_request トリガー）に必要な permissions: contents: read
+# 呼び出し側（pull_request トリガー）に必要な permissions:
+#   contents: read, pull-requests: write（違反の PR コメント投稿用。pr-comment: false なら read のみ）
+# 違反は sticky な PR コメント（bot コメント1つを更新）でも通知される。fork PR では
+# トークンが読み取り専用のためコメントは投稿されない（チェック自体は動く）。
 # 緊急時は PR に override ラベル（デフォルト: cooldown-override）を付けるとスキップされる。
 name: cooldown-check
 
@@ -31,6 +34,10 @@ on:
         description: このラベルが付いた PR はチェックをスキップ
         type: string
         default: cooldown-override
+      pr-comment:
+        description: 違反内容を PR コメント（sticky）として投稿するか
+        type: boolean
+        default: true
 
 jobs:
   cooldown-check:
@@ -49,3 +56,4 @@ jobs:
           actions-min-age-days: ${{ inputs.actions-min-age-days }}
           exclude: ${{ inputs.exclude }}
           override-label: ${{ inputs.override-label }}
+          pr-comment: ${{ inputs.pr-comment }}

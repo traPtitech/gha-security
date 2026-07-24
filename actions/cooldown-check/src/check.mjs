@@ -289,6 +289,39 @@ export async function run(ctx) {
   return { violations, warnings, checked: seen.size };
 }
 
+// ---------- PR sticky comment ----------
+
+export const COMMENT_MARKER = "<!-- gha-security/cooldown-check -->";
+
+// 違反があれば sticky コメントを作成/更新し、解消されたら ✅ に更新する。
+// クリーンな PR に ✅ コメントを新規作成はしない（ノイズ防止）。
+export async function syncPrComment({ fetchImpl, api, repo, pr, token, output, hasViolations }) {
+  const headers = {
+    authorization: `Bearer ${token}`,
+    accept: "application/vnd.github+json",
+    "user-agent": "cooldown-check",
+    "content-type": "application/json",
+  };
+  const body = hasViolations
+    ? `${COMMENT_MARKER}\n${output}`
+    : `${COMMENT_MARKER}\ncooldown-check: 指摘した違反は解消されました ✅`;
+  const res = await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments?per_page=100`, { headers });
+  if (!res.ok) throw new Error(`list comments: HTTP ${res.status}`);
+  const comments = await res.json();
+  const mine = comments.find((c) => typeof c.body === "string" && c.body.startsWith(COMMENT_MARKER));
+  if (mine) {
+    await fetchImpl(`${api}/repos/${repo}/issues/comments/${mine.id}`,
+      { method: "PATCH", headers, body: JSON.stringify({ body }) });
+    return "updated";
+  }
+  if (hasViolations) {
+    await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments`,
+      { method: "POST", headers, body: JSON.stringify({ body }) });
+    return "created";
+  }
+  return "skipped";
+}
+
 // ---------- CLI ----------
 
 function git(...args) {
@@ -342,6 +375,24 @@ async function main() {
   const output = lines.join("\n");
   console.log(output);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, output + "\n");
+
+  if ((process.env.PR_COMMENT ?? "true") === "true"
+      && process.env.PR_NUMBER && process.env.GITHUB_REPOSITORY && process.env.GITHUB_TOKEN) {
+    try {
+      await syncPrComment({
+        fetchImpl: globalThis.fetch,
+        api: process.env.GITHUB_API_URL || "https://api.github.com",
+        repo: process.env.GITHUB_REPOSITORY,
+        pr: process.env.PR_NUMBER,
+        token: process.env.GITHUB_TOKEN,
+        output,
+        hasViolations: result.violations.length > 0,
+      });
+    } catch (e) {
+      // fork PR などでは書き込み権限がない。チェック結果自体には影響させない
+      console.error(`PR コメントの投稿に失敗しました（権限不足の可能性）: ${e.message}`);
+    }
+  }
   process.exit(result.violations.length > 0 ? 1 : 0);
 }
 

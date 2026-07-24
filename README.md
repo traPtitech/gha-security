@@ -15,7 +15,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 |---|---|---|
 | `pin-support.yaml` | PR 内の未固定参照を検出し、**修正を suggestion または直接コミットで返す**（作業の肩代わり） | `pull_request` |
 | `pin-check.yaml` | 未固定参照があれば fail する退行防止 lint（`--verify-comment` でコメント偽装も検出） | `pull_request` |
-| `cooldown-check.yaml` | PR で追加/変更された依存に公開 N 日未満の版があれば fail | `pull_request` |
+| `cooldown-check.yaml` | PR で追加/変更された依存に公開 N 日未満の版があれば fail。違反内容は **sticky な PR コメント**（bot コメント1つを更新）でも通知され、解消すると ✅ に変わる | `pull_request` |
 | `pin.yaml` | リポジトリ全体を固定して PR を作成。`update: true` で bot なしリポジトリの追従更新も担う | `schedule` / `workflow_dispatch` |
 
 ### Composite actions（`actions/`）
@@ -61,7 +61,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 |---|---|---|
 | pin-support | caller に job を書く | job を書かない。`pin-docker: false` で Docker 部分のみ無効化 |
 | pin-check | caller に job を書く | job を書かない。`pin-docker: false` / `verify-comment: false` |
-| cooldown-check | caller に job を書く | job を書かない。`npm-min-age-days: 0` 等で**エコシステム単位に無効化**（0 のエコシステムはレジストリ照会もしない） |
+| cooldown-check | caller に job を書く | job を書かない。`npm-min-age-days: 0` 等で**エコシステム単位に無効化**（0 のエコシステムはレジストリ照会もしない）。`pr-comment: false` で PR コメント通知のみ無効化 |
 | pin.yaml（定期固定PR） | caller を配置 | 配置しない。`update: false`（デフォルト）で追従更新のみ無効化 |
 | クライアント側 cooldown | `templates/client-cooldown/` の設定をコミット | コミットしない／ファイルを消す（CI 側の cooldown-check とは独立） |
 | dependabot.yml | テンプレを参考に配置 | cooldown ブロックを消せばデフォルト（3日）に、`cooldown: {default-days: 0}` で無効に |

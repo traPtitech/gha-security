@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   parsePackageLock, parsePnpmLock, parseYarnLock, parseBunLock,
   parsePackageJsonExact, parseGoMod, parseGoSum, parseWorkflowUses,
-  diffDeps, globToRegExp, matchesAny, run,
+  diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
 } from "../src/check.mjs";
 
 const get = (map, name) => [...(map.get(name) ?? [])];
@@ -195,4 +195,38 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   const off = await run({ ...base, thresholds: { npm: 0, go: 3, actions: 0 } });
   assert.deepEqual(off.violations, []);
   assert.equal(off.checked, 1); // go のみ
+});
+
+test("syncPrComment: create / update / resolve / skip", async () => {
+  const mk = (listBody) => {
+    const calls = [];
+    const fetchImpl = async (url, opts = {}) => {
+      calls.push({ url, method: opts.method ?? "GET", body: opts.body });
+      return { ok: true, json: async () => listBody };
+    };
+    return { fetchImpl, calls };
+  };
+  const args = { api: "https://api", repo: "o/r", pr: "3", token: "t", output: "TABLE", hasViolations: true };
+
+  // 違反あり・既存コメントなし → 新規作成
+  let { fetchImpl, calls } = mk([]);
+  assert.equal(await syncPrComment({ fetchImpl, ...args }), "created");
+  assert.equal(calls.at(-1).method, "POST");
+  assert.ok(JSON.parse(calls.at(-1).body).body.startsWith(COMMENT_MARKER));
+
+  // 違反あり・既存あり → 更新
+  ({ fetchImpl, calls } = mk([{ id: 5, body: `${COMMENT_MARKER}\nold` }, { id: 6, body: "unrelated" }]));
+  assert.equal(await syncPrComment({ fetchImpl, ...args }), "updated");
+  assert.ok(calls.at(-1).url.endsWith("/comments/5"));
+  assert.equal(calls.at(-1).method, "PATCH");
+
+  // 解消・既存あり → ✅ に更新
+  ({ fetchImpl, calls } = mk([{ id: 5, body: `${COMMENT_MARKER}\nold` }]));
+  assert.equal(await syncPrComment({ fetchImpl, ...args, hasViolations: false }), "updated");
+  assert.ok(JSON.parse(calls.at(-1).body).body.includes("解消されました"));
+
+  // クリーン・既存なし → 何もしない（ノイズ防止）
+  ({ fetchImpl, calls } = mk([]));
+  assert.equal(await syncPrComment({ fetchImpl, ...args, hasViolations: false }), "skipped");
+  assert.equal(calls.length, 1); // 一覧取得のみ
 });
