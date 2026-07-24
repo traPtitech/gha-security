@@ -1,0 +1,108 @@
+# pin-support: PR に含まれる未固定の action / Docker イメージ参照を検出し、
+# 修正を「提案 (suggest)」または「直接コミット (commit)」で返す再利用ワークフロー。
+#
+# 呼び出し側 (pull_request トリガー) に必要な permissions:
+#   suggest: contents: read,  pull-requests: write
+#   commit:  contents: write, pull-requests: write
+#
+# セキュリティ上の設計: PR のコードは一切実行しない（pinact / frizbee による
+# ファイルの静的書き換えのみ）。fork からの PR は自動で suggest にフォールバックする。
+name: pin-support
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: "suggest（レビューコメントで提案）| commit（PR ブランチへ直接 push）"
+        type: string
+        default: suggest
+      pin-docker:
+        description: Dockerfile / compose の digest 固定も行うか
+        type: boolean
+        default: true
+      file-exclude-regex:
+        description: pin-docker が除外するファイルパスの正規表現
+        type: string
+        default: '(^|/)(docker-)?compose[^/]*\.(dev|local|override)[^/]*\.ya?ml$'
+      image-exclude-regex:
+        description: pin-docker が除外するイメージ参照の正規表現
+        type: string
+        default: '^ghcr\.io/traptitech/'
+
+jobs:
+  pin-support:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      # fork からの PR にはブランチへの push 権限がないため suggest に落とす
+      EFFECTIVE_MODE: ${{ (inputs.mode == 'commit' && github.event.pull_request.head.repo.full_name == github.repository) && 'commit' || 'suggest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: ${{ inputs.mode == 'commit' }}
+
+      - uses: traPtitech/gha-security/actions/setup-tools@main
+
+      - name: Pin actions added in this PR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git diff "$(git merge-base "$BASE_SHA" HEAD)"..HEAD > "$RUNNER_TEMP/pr.diff"
+          pinact run --diff-file "$RUNNER_TEMP/pr.diff"
+
+      - name: Collect docker files changed in this PR
+        if: inputs.pin-docker
+        id: docker-files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'files<<EOF'
+            git diff --name-only "$(git merge-base "$BASE_SHA" HEAD)"..HEAD \
+              | grep -iE '(^|/)(Dockerfile[^/]*|[^/]+\.dockerfile|(docker-)?compose[^/]*\.ya?ml)$' || true
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Pin docker images in changed files
+        if: inputs.pin-docker && steps.docker-files.outputs.files != ''
+        uses: traPtitech/gha-security/actions/pin-docker@main
+        with:
+          mode: fix
+          files: ${{ steps.docker-files.outputs.files }}
+          file-exclude-regex: ${{ inputs.file-exclude-regex }}
+          image-exclude-regex: ${{ inputs.image-exclude-regex }}
+
+      - name: Detect fixes
+        id: fixes
+        run: |
+          if git diff --quiet; then
+            echo "dirty=false" >> "$GITHUB_OUTPUT"
+            echo "pin-support: 未固定の参照はありません ✅" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dirty=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push fix commit
+        if: steps.fixes.outputs.dirty == 'true' && env.EFFECTIVE_MODE == 'commit'
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(security): pin actions and docker images"
+          git push origin "HEAD:refs/heads/${HEAD_REF}"
+          echo "pin-support: 修正コミットを push しました（注: GITHUB_TOKEN による push は CI を再トリガーしません）" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Suggest fixes
+        if: steps.fixes.outputs.dirty == 'true' && env.EFFECTIVE_MODE == 'suggest'
+        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46 # v1.24.3
+        with:
+          tool_name: pin-support
+          fail_on_error: false

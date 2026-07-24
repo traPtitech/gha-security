@@ -1,0 +1,34 @@
+# 標準 dependabot.yml テンプレート（リポジトリに応じてエコシステムを取捨選択する）
+# cooldown: 2026-07-14 以降デフォルト 3 日が適用されるが、方針の明示と npm の 7 日化のため設定を書く。
+# セキュリティアップデートは cooldown をバイパスして即時に来る（デフォルト挙動）。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+
+  # Dockerfile / compose のあるディレクトリごとに 1 エントリ
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-major-days: 14

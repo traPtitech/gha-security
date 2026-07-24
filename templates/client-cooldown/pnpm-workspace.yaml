@@ -1,0 +1,6 @@
+# pnpm のクライアント側 cooldown（分単位。10080 分 = 7 日）
+# 既存の pnpm-workspace.yaml がある場合はこのキーを追記する。
+minimumReleaseAge: 10080
+# 自 org のパッケージは即時に使えるようにする
+minimumReleaseAgeExclude:
+  - "@traptitech/*"

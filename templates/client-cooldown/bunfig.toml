@@ -1,0 +1,5 @@
+# Bun のクライアント側 cooldown（秒単位。604800 秒 = 7 日）
+# 既存の bunfig.toml がある場合は [install] セクションにこのキーを追記する。
+[install]
+minimumReleaseAge = 604800
+minimumReleaseAgeExcludes = ["@traptitech/*"]

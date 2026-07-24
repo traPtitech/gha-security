@@ -1,0 +1,62 @@
+# pin-check: 未固定の action / Docker イメージ参照があれば fail する退行防止 lint。
+# pin-support と併用すると「check が赤 = 修正提案が既に PR に付いている」状態になる。
+#
+# 呼び出し側に必要な permissions: contents: read
+name: pin-check
+
+on:
+  workflow_call:
+    inputs:
+      pin-docker:
+        description: Dockerfile / compose の digest 固定も検査するか
+        type: boolean
+        default: true
+      verify-comment:
+        description: SHA とバージョンコメントの対応も検証するか（コメント偽装の検出）
+        type: boolean
+        default: true
+      file-exclude-regex:
+        description: docker 検査で除外するファイルパスの正規表現
+        type: string
+        default: '(^|/)(docker-)?compose[^/]*\.(dev|local|override)[^/]*\.ya?ml$'
+      image-exclude-regex:
+        description: docker 検査で除外するイメージ参照の正規表現
+        type: string
+        default: '^ghcr\.io/traptitech/'
+
+jobs:
+  pin-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: traPtitech/gha-security/actions/setup-tools@main
+        with:
+          install-frizbee: "false"
+
+      - name: Check actions are pinned
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERIFY: ${{ inputs.verify-comment }}
+        run: |
+          set -euo pipefail
+          args=(--check)
+          [ "$VERIFY" = "true" ] && args+=(--verify-comment)
+          if ! pinact run "${args[@]}"; then
+            {
+              echo "### pin-check: 未固定の action があります ❌"
+              echo ""
+              echo "この PR には \`pin-support\` の修正提案が付いています（付いていない場合はローカルで \`pinact run\` を実行してください）。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Check docker images are pinned
+        if: inputs.pin-docker
+        uses: traPtitech/gha-security/actions/pin-docker@main
+        with:
+          mode: check
+          file-exclude-regex: ${{ inputs.file-exclude-regex }}
+          image-exclude-regex: ${{ inputs.image-exclude-regex }}

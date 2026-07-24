@@ -1,0 +1,39 @@
+name: pin-docker
+description: |
+  Dockerfile の FROM / compose の image: を digest 固定する。
+  digest 解決は frizbee(単一参照モード)、書き換えは同梱の pin_docker.py が行う。
+  事前に setup-tools で frizbee をインストールしておくこと（check モードでは不要）。
+inputs:
+  mode:
+    description: "fix（書き換え）| check（検査のみ・ネットワーク不要）"
+    default: fix
+  files:
+    description: 対象ファイル（改行区切り。省略時はリポジトリ全体を探索）
+    default: ""
+  file-exclude-regex:
+    description: 除外するファイルパスの正規表現（開発用 compose など）
+    default: '(^|/)(docker-)?compose[^/]*\.(dev|local|override)[^/]*\.ya?ml$'
+  image-exclude-regex:
+    description: 除外するイメージ参照の正規表現
+    default: '^ghcr\.io/traptitech/'
+runs:
+  using: composite
+  steps:
+    - name: Pin docker image references
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        FILES: ${{ inputs.files }}
+        FILE_EXCLUDE: ${{ inputs.file-exclude-regex }}
+        IMAGE_EXCLUDE: ${{ inputs.image-exclude-regex }}
+      run: |
+        set -euo pipefail
+        args=()
+        [ "$MODE" = "check" ] && args+=(--check)
+        [ -n "$FILE_EXCLUDE" ] && args+=(--file-exclude-regex "$FILE_EXCLUDE")
+        [ -n "$IMAGE_EXCLUDE" ] && args+=(--image-exclude-regex "$IMAGE_EXCLUDE")
+        if [ -n "$FILES" ]; then
+          mapfile -t files <<< "$FILES"
+          args+=(--files "${files[@]}")
+        fi
+        python3 "${GITHUB_ACTION_PATH}/pin_docker.py" "${args[@]}"

@@ -1,0 +1,50 @@
+name: cooldown-check
+description: |
+  PR の diff から新規追加/変更された依存を抽出し、公開から min-age 日未満の
+  バージョンが入っていたら fail する（手動 bump・bot 経由を問わず全 PR に効く）。
+  対象: npm 系 lockfile / package.json 厳密指定 / go.mod / go.sum / GitHub Actions の uses:
+  呼び出し側で fetch-depth: 0 の checkout が必要。
+inputs:
+  min-age-days:
+    description: npm 以外のしきい値（日）
+    default: "3"
+  npm-min-age-days:
+    description: npm のしきい値（日）
+    default: "7"
+  exclude:
+    description: 除外パターン（改行区切りの glob。npm 名 / Go module / owner/repo に対して評価）
+    default: |
+      @traptitech/*
+      traPtitech/*
+  override-label:
+    description: この PR ラベルが付いていたらチェックをスキップする（緊急用）
+    default: cooldown-override
+  github-token:
+    description: GitHub API 用トークン（Actions のリリース日時照会に使用）
+    default: ${{ github.token }}
+  base-sha:
+    description: 比較の base SHA（省略時は PR イベントから取得）
+    default: ""
+  head-sha:
+    description: 比較の head SHA（省略時は PR イベントから取得）
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Skip by override label
+      if: contains(github.event.pull_request.labels.*.name, inputs.override-label)
+      shell: bash
+      run: |
+        echo "::notice::cooldown-check は '${{ inputs.override-label }}' ラベルによりスキップされました"
+        echo "cooldown-check: ラベル \`${{ inputs.override-label }}\` によりスキップ ⏭️" >> "$GITHUB_STEP_SUMMARY"
+    - name: Run cooldown check
+      if: ${{ !contains(github.event.pull_request.labels.*.name, inputs.override-label) }}
+      shell: bash
+      env:
+        BASE_SHA: ${{ inputs.base-sha != '' && inputs.base-sha || github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ inputs.head-sha != '' && inputs.head-sha || github.event.pull_request.head.sha }}
+        MIN_AGE_DAYS: ${{ inputs.min-age-days }}
+        NPM_MIN_AGE_DAYS: ${{ inputs.npm-min-age-days }}
+        EXCLUDE_PATTERNS: ${{ inputs.exclude }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node "${GITHUB_ACTION_PATH}/src/check.mjs"

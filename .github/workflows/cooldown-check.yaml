@@ -1,0 +1,46 @@
+# cooldown-check: PR で追加/変更された依存のうち、公開から日が浅いバージョンを検出して fail する。
+# Dependabot / Renovate を使っていないリポジトリや、手元で install して lockfile ごと
+# 上げてくる PR にも効く「PR 時点の cooldown ゲート」。
+#
+# 呼び出し側（pull_request トリガー）に必要な permissions: contents: read
+# 緊急時は PR に override ラベル（デフォルト: cooldown-override）を付けるとスキップされる。
+name: cooldown-check
+
+on:
+  workflow_call:
+    inputs:
+      min-age-days:
+        description: npm 以外（Go / Actions）のしきい値（日）
+        type: number
+        default: 3
+      npm-min-age-days:
+        description: npm のしきい値（日）
+        type: number
+        default: 7
+      exclude:
+        description: 除外パターン（改行区切り glob）
+        type: string
+        default: |
+          @traptitech/*
+          traPtitech/*
+      override-label:
+        description: このラベルが付いた PR はチェックをスキップ
+        type: string
+        default: cooldown-override
+
+jobs:
+  cooldown-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: traPtitech/gha-security/actions/cooldown-check@main
+        with:
+          min-age-days: ${{ inputs.min-age-days }}
+          npm-min-age-days: ${{ inputs.npm-min-age-days }}
+          exclude: ${{ inputs.exclude }}
+          override-label: ${{ inputs.override-label }}

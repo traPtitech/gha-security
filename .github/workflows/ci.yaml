@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: cooldown-check unit tests
+        run: node --test actions/cooldown-check/test/check.test.mjs
+      - name: pin-docker regression tests
+        run: python3 tests/pin_docker_test.py
+
+  self-pin-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./actions/setup-tools
+        with:
+          install-frizbee: "false"
+      - name: Dogfood pin-check on own workflows
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        # 自リポジトリの再利用ワークフロー相互参照（traPtitech/gha-security/...@main）は除外
+        run: pinact run --check --verify-comment --exclude '^traPtitech/gha-security/'

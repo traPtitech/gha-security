@@ -1,0 +1,103 @@
+# pin: リポジトリ全体の action / Docker イメージ参照を固定し、PR を作成する再利用ワークフロー。
+#
+# 用途:
+#   - 初回の一括固定（全リポジトリ共通）
+#   - Dependabot / Renovate が入っていないリポジトリの追従更新（update: true）
+#     ※ bot 導入済みリポジトリでは update: false のままにすること（bump PR が競合する）
+#
+# 呼び出し側（schedule + workflow_dispatch 推奨）に必要な permissions:
+#   contents: write, pull-requests: write
+# App トークン（secrets: app-id / app-private-key）を渡すと、作成した PR で CI が走るようになる。
+name: pin
+
+on:
+  workflow_call:
+    inputs:
+      update:
+        description: 既存の固定済み参照も最新版へ更新するか（bot なしリポジトリ専用）
+        type: boolean
+        default: false
+      min-age:
+        description: update 時の cooldown（公開からこの日数未満の版へは更新しない）
+        type: number
+        default: 3
+      pin-docker:
+        description: Dockerfile / compose の digest 固定も行うか
+        type: boolean
+        default: true
+      file-exclude-regex:
+        description: pin-docker が除外するファイルパスの正規表現
+        type: string
+        default: '(^|/)(docker-)?compose[^/]*\.(dev|local|override)[^/]*\.ya?ml$'
+      image-exclude-regex:
+        description: pin-docker が除外するイメージ参照の正規表現
+        type: string
+        default: '^ghcr\.io/traptitech/'
+      pr-branch:
+        description: 作成する PR のブランチ名
+        type: string
+        default: gha-security/pin
+    secrets:
+      app-id:
+        required: false
+      app-private-key:
+        required: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    env:
+      HAS_APP: ${{ secrets.app-id != '' && secrets.app-private-key != '' }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: traPtitech/gha-security/actions/setup-tools@main
+
+      - name: Pin GitHub Actions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          UPDATE: ${{ inputs.update }}
+          MIN_AGE: ${{ inputs.min-age }}
+        run: |
+          set -euo pipefail
+          if [ "$UPDATE" = "true" ]; then
+            pinact run --update --min-age "$MIN_AGE"
+          else
+            pinact run
+          fi
+
+      - name: Pin docker images
+        if: inputs.pin-docker
+        uses: traPtitech/gha-security/actions/pin-docker@main
+        with:
+          mode: fix
+          file-exclude-regex: ${{ inputs.file-exclude-regex }}
+          image-exclude-regex: ${{ inputs.image-exclude-regex }}
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
+          branch: ${{ inputs.pr-branch }}
+          delete-branch: true
+          commit-message: "chore(security): pin actions and docker images"
+          title: "security: GitHub Actions / Docker イメージの固定（自動生成）"
+          body: |
+            [traPtitech/gha-security](https://github.com/traPtitech/gha-security) の pin ワークフローによる自動生成 PR です。
+
+            - GitHub Actions の `uses:` を 40 桁 commit SHA + バージョンコメントに固定
+            - Dockerfile / compose のイメージ参照に `@sha256:` digest を付与
+
+            **レビュー観点**
+            - バージョンコメントと SHA の対応は pin-check（`pinact --verify-comment`）で検証されます
+            - digest 固定後の更新は Dependabot / Renovate（未導入の場合はこのワークフローの `update: true`）が追従します

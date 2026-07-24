@@ -1,0 +1,44 @@
+name: setup-tools
+description: |
+  pinact / frizbee のバイナリを checksum 検証付きでインストールする内部用 action。
+  バージョンと checksum はこのファイルに固定でコミットし、更新は PR で行う。
+inputs:
+  install-pinact:
+    description: pinact をインストールするか
+    default: "true"
+  install-frizbee:
+    description: frizbee をインストールするか
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install pinact
+      if: inputs.install-pinact == 'true'
+      shell: bash
+      env:
+        PINACT_VERSION: 4.1.0
+        PINACT_SHA256: 8fcbf1b3e95551c82fd995535e3c1defa70e23299ce36eb3afd6c98778de6ca0
+      run: |
+        set -euo pipefail
+        cd "$(mktemp -d)"
+        curl -sSfL -o pinact.tar.gz \
+          "https://github.com/suzuki-shunsuke/pinact/releases/download/v${PINACT_VERSION}/pinact_linux_amd64.tar.gz"
+        echo "${PINACT_SHA256}  pinact.tar.gz" | sha256sum -c -
+        tar xzf pinact.tar.gz pinact
+        install -m 0755 pinact "${RUNNER_TEMP}/pinact"
+        echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
+    - name: Install frizbee
+      if: inputs.install-frizbee == 'true'
+      shell: bash
+      env:
+        FRIZBEE_VERSION: 0.1.10
+        FRIZBEE_SHA256: 9638bb999f0f0936c381f01273feacda0bd0fcc573f037e0d7bd1b86d222f51c
+      run: |
+        set -euo pipefail
+        cd "$(mktemp -d)"
+        curl -sSfL -o frizbee.tar.gz \
+          "https://github.com/stacklok/frizbee/releases/download/v${FRIZBEE_VERSION}/frizbee_${FRIZBEE_VERSION}_linux_amd64.tar.gz"
+        echo "${FRIZBEE_SHA256}  frizbee.tar.gz" | sha256sum -c -
+        tar xzf frizbee.tar.gz frizbee
+        install -m 0755 frizbee "${RUNNER_TEMP}/frizbee"
+        echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
