@@ -177,17 +177,22 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
     go: async (n, v) => dates[`go:${n}@${v}`] ? { date: new Date(dates[`go:${n}@${v}`]) } : { warn: "not found" },
     action: async (o, r, t) => dates[`actions:${o}/${r}@${t}`] ? { date: new Date(dates[`actions:${o}/${r}@${t}`]) } : { warn: "not found" },
   };
-  const result = await run({
+  const base = {
     changedFiles: Object.keys(files.head),
     readFileAt: (sha, f) => files[sha]?.[f] ?? "",
     baseSha: "base", headSha: "head",
-    minAgeDays: 3, npmMinAgeDays: 7,
     excludePatterns: ["@traptitech/*", "traPtitech/*"],
     lookups, now: NOW,
-  });
+  };
+  const result = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 3 } });
   const flagged = result.violations.map((v) => `${v.eco}:${v.name}@${v.version}`).sort();
   assert.deepEqual(flagged, ["actions:actions/checkout@v7.0.1", "npm:fresh-pkg@2.0.0"]);
   assert.equal(result.warnings.length, 0);
   // 除外された自 org パッケージは照会もされない
   assert.equal(result.checked, 4);
+
+  // しきい値 0 でエコシステム単位のオフ（照会もされない）
+  const off = await run({ ...base, thresholds: { npm: 0, go: 3, actions: 0 } });
+  assert.deepEqual(off.violations, []);
+  assert.equal(off.checked, 1); // go のみ
 });

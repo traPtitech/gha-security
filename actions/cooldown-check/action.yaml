@@ -5,12 +5,15 @@ description: |
   対象: npm 系 lockfile / package.json 厳密指定 / go.mod / go.sum / GitHub Actions の uses:
   呼び出し側で fetch-depth: 0 の checkout が必要。
 inputs:
-  min-age-days:
-    description: npm 以外のしきい値（日）
-    default: "3"
   npm-min-age-days:
-    description: npm のしきい値（日）
+    description: npm のしきい値（日）。0 で npm チェックを無効化
     default: "7"
+  go-min-age-days:
+    description: Go のしきい値（日）。0 で Go チェックを無効化
+    default: "3"
+  actions-min-age-days:
+    description: GitHub Actions のしきい値（日）。0 で actions チェックを無効化
+    default: "3"
   exclude:
     description: 除外パターン（改行区切りの glob。npm 名 / Go module / owner/repo に対して評価）
     default: |
@@ -43,8 +46,9 @@ runs:
       env:
         BASE_SHA: ${{ inputs.base-sha != '' && inputs.base-sha || github.event.pull_request.base.sha }}
         HEAD_SHA: ${{ inputs.head-sha != '' && inputs.head-sha || github.event.pull_request.head.sha }}
-        MIN_AGE_DAYS: ${{ inputs.min-age-days }}
         NPM_MIN_AGE_DAYS: ${{ inputs.npm-min-age-days }}
+        GO_MIN_AGE_DAYS: ${{ inputs.go-min-age-days }}
+        ACTIONS_MIN_AGE_DAYS: ${{ inputs.actions-min-age-days }}
         EXCLUDE_PATTERNS: ${{ inputs.exclude }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: node "${GITHUB_ACTION_PATH}/src/check.mjs"

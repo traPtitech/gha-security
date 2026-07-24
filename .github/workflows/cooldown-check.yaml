@@ -9,14 +9,18 @@ name: cooldown-check
 on:
   workflow_call:
     inputs:
-      min-age-days:
-        description: npm 以外（Go / Actions）のしきい値（日）
-        type: number
-        default: 3
       npm-min-age-days:
-        description: npm のしきい値（日）
+        description: npm のしきい値（日）。0 で npm チェックを無効化
         type: number
         default: 7
+      go-min-age-days:
+        description: Go のしきい値（日）。0 で Go チェックを無効化
+        type: number
+        default: 3
+      actions-min-age-days:
+        description: GitHub Actions のしきい値（日）。0 で actions チェックを無効化
+        type: number
+        default: 3
       exclude:
         description: 除外パターン（改行区切り glob）
         type: string
@@ -40,7 +44,8 @@ jobs:
 
       - uses: traPtitech/gha-security/actions/cooldown-check@main
         with:
-          min-age-days: ${{ inputs.min-age-days }}
           npm-min-age-days: ${{ inputs.npm-min-age-days }}
+          go-min-age-days: ${{ inputs.go-min-age-days }}
+          actions-min-age-days: ${{ inputs.actions-min-age-days }}
           exclude: ${{ inputs.exclude }}
           override-label: ${{ inputs.override-label }}

@@ -53,6 +53,20 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 しきい値の標準: **npm 7日 / その他 3日**。自 org 産（`@traptitech/*`, `traPtitech/*`）はデフォルト除外。
 緊急のセキュリティ修正は PR に **`cooldown-override` ラベル**を付けるとスキップできる（Dependabot のセキュリティアップデートはもともと cooldown 対象外）。
 
+## 機能のオン/オフ
+
+すべての機能は**リポジトリ単位で独立してオプトイン/オプトアウト**できる。全部入りは強制しない。
+
+| 機能 | オンにする方法 | オフにする方法 / 部分無効化 |
+|---|---|---|
+| pin-support | caller に job を書く | job を書かない。`pin-docker: false` で Docker 部分のみ無効化 |
+| pin-check | caller に job を書く | job を書かない。`pin-docker: false` / `verify-comment: false` |
+| cooldown-check | caller に job を書く | job を書かない。`npm-min-age-days: 0` 等で**エコシステム単位に無効化**（0 のエコシステムはレジストリ照会もしない） |
+| pin.yaml（定期固定PR） | caller を配置 | 配置しない。`update: false`（デフォルト）で追従更新のみ無効化 |
+| クライアント側 cooldown | `templates/client-cooldown/` の設定をコミット | コミットしない／ファイルを消す（CI 側の cooldown-check とは独立） |
+| dependabot.yml | テンプレを参考に配置 | cooldown ブロックを消せばデフォルト（3日）に、`cooldown: {default-days: 0}` で無効に |
+| renovate-config | `extends: ["github>traPtitech/renovate-config"]` | extends しない。一部だけ無効化する場合は extends の後に上書き（[renovate-config の README](https://github.com/traPtitech/renovate-config) 参照） |
+
 ## セキュリティ上の設計原則
 
 - **PR のコードは実行しない**: pin-support はファイルの静的書き換えのみ。`pull_request_target` は使わない

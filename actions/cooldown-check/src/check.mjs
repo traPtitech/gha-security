@@ -217,14 +217,17 @@ const NPM_LOCKFILES = new Map([
 ]);
 
 export async function run(ctx) {
-  const { changedFiles, readFileAt, baseSha, headSha, minAgeDays, npmMinAgeDays,
+  // thresholds: { npm, go, actions } — 0 以下でそのエコシステムのチェックを無効化
+  const { changedFiles, readFileAt, baseSha, headSha, thresholds,
           excludePatterns, lookups, now } = ctx;
   const excludes = excludePatterns.map(globToRegExp);
   const violations = [];
   const warnings = [];
   const targets = []; // {eco, name, version, file, threshold}
 
-  const collect = (file, parser, eco, threshold) => {
+  const collect = (file, parser, eco) => {
+    const threshold = thresholds[eco];
+    if (!(threshold > 0)) return; // 無効化されたエコシステム
     const base = parser(readFileAt(baseSha, file));
     const head = parser(readFileAt(headSha, file));
     for (const { name, version } of diffDeps(base, head)) {
@@ -237,14 +240,15 @@ export async function run(ctx) {
     const basename = file.split("/").pop();
     if (file.includes("node_modules/")) continue;
     if (NPM_LOCKFILES.has(basename)) {
-      collect(file, NPM_LOCKFILES.get(basename), "npm", npmMinAgeDays);
+      collect(file, NPM_LOCKFILES.get(basename), "npm");
     } else if (basename === "package.json") {
-      collect(file, parsePackageJsonExact, "npm", npmMinAgeDays);
+      collect(file, parsePackageJsonExact, "npm");
     } else if (basename === "go.mod") {
-      collect(file, parseGoMod, "go", minAgeDays);
+      collect(file, parseGoMod, "go");
     } else if (basename === "go.sum") {
-      collect(file, parseGoSum, "go", minAgeDays);
+      collect(file, parseGoSum, "go");
     } else if (/^\.github\/(workflows\/[^/]+\.ya?ml|actions\/.+\/action\.ya?ml)$/.test(file)) {
+      if (!(thresholds.actions > 0)) continue; // 無効化されたエコシステム
       const base = parseWorkflowUses(readFileAt(baseSha, file));
       const head = parseWorkflowUses(readFileAt(headSha, file));
       for (const entry of head) {
@@ -261,7 +265,7 @@ export async function run(ctx) {
           warnings.push(`${file}: \`${spec}\` は SHA 固定ですがバージョンコメントがないため公開日時を確認できません`);
           continue;
         }
-        targets.push({ eco: "actions", name: `${owner}/${repo}`, version, file, threshold: minAgeDays });
+        targets.push({ eco: "actions", name: `${owner}/${repo}`, version, file, threshold: thresholds.actions });
       }
     }
   }
@@ -307,8 +311,11 @@ async function main() {
     readFileAt: (sha, file) => git("show", `${sha}:${file}`),
     baseSha: mergeBase,
     headSha,
-    minAgeDays: Number(process.env.MIN_AGE_DAYS ?? 3),
-    npmMinAgeDays: Number(process.env.NPM_MIN_AGE_DAYS ?? 7),
+    thresholds: {
+      npm: Number(process.env.NPM_MIN_AGE_DAYS ?? 7),
+      go: Number(process.env.GO_MIN_AGE_DAYS ?? 3),
+      actions: Number(process.env.ACTIONS_MIN_AGE_DAYS ?? 3),
+    },
     excludePatterns: (process.env.EXCLUDE_PATTERNS ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
     lookups: makeLookups(globalThis.fetch, process.env.GITHUB_TOKEN, process.env.GITHUB_API_URL),
     now: Date.now(),
