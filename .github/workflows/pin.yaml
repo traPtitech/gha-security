@@ -37,6 +37,10 @@ on:
         description: 作成する PR のブランチ名
         type: string
         default: gha-security/pin
+      pinact-exclude-regex:
+        description: pinact の対象から除外する action の正規表現
+        type: string
+        default: '^traPtitech/'
     secrets:
       app-id:
         required: false
@@ -68,12 +72,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           UPDATE: ${{ inputs.update }}
           MIN_AGE: ${{ inputs.min-age }}
+          EXCLUDE: ${{ inputs.pinact-exclude-regex }}
         run: |
           set -euo pipefail
+          args=()
+          [ -n "$EXCLUDE" ] && args+=(--exclude "$EXCLUDE")
           if [ "$UPDATE" = "true" ]; then
-            pinact run --update --min-age "$MIN_AGE"
+            pinact run --update --min-age "$MIN_AGE" "${args[@]}"
           else
-            pinact run
+            pinact run "${args[@]}"
           fi
 
       - name: Pin docker images

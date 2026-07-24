@@ -15,6 +15,10 @@ on:
         description: SHA とバージョンコメントの対応も検証するか（コメント偽装の検出）
         type: boolean
         default: true
+      pinact-exclude-regex:
+        description: pinact の検査から除外する action の正規表現（同 org の再利用ワークフロー参照など）
+        type: string
+        default: '^traPtitech/'
       file-exclude-regex:
         description: docker 検査で除外するファイルパスの正規表現
         type: string
@@ -40,10 +44,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERIFY: ${{ inputs.verify-comment }}
+          EXCLUDE: ${{ inputs.pinact-exclude-regex }}
         run: |
           set -euo pipefail
           args=(--check)
           [ "$VERIFY" = "true" ] && args+=(--verify-comment)
+          [ -n "$EXCLUDE" ] && args+=(--exclude "$EXCLUDE")
           if ! pinact run "${args[@]}"; then
             {
               echo "### pin-check: 未固定の action があります ❌"

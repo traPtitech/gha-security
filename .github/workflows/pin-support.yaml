@@ -28,6 +28,10 @@ on:
         description: pin-docker が除外するイメージ参照の正規表現
         type: string
         default: '^ghcr\.io/traptitech/'
+      pinact-exclude-regex:
+        description: pinact の修正対象から除外する action の正規表現
+        type: string
+        default: '^traPtitech/'
 
 jobs:
   pin-support:
@@ -49,10 +53,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXCLUDE: ${{ inputs.pinact-exclude-regex }}
         run: |
           set -euo pipefail
           git diff "$(git merge-base "$BASE_SHA" HEAD)"..HEAD > "$RUNNER_TEMP/pr.diff"
-          pinact run --diff-file "$RUNNER_TEMP/pr.diff"
+          args=(--diff-file "$RUNNER_TEMP/pr.diff")
+          [ -n "$EXCLUDE" ] && args+=(--exclude "$EXCLUDE")
+          pinact run "${args[@]}"
 
       - name: Collect docker files changed in this PR
         if: inputs.pin-docker
