@@ -1,0 +1,15 @@
+# dependency-policy: CI が lockfile を厳密に使用していることと、
+# package.json の依存が range / tag ではないことを検査する。
+name: dependency-policy
+
+on:
+  workflow_call:
+
+jobs:
+  dependency-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: traPtitech/gha-security/actions/dependency-policy@main
