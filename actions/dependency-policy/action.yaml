@@ -1,0 +1,8 @@
+name: dependency-policy
+description: Checks CI lockfile enforcement and package.json dependency pinning.
+runs:
+  using: composite
+  steps:
+    - name: Check dependency policy
+      shell: bash
+      run: node "${GITHUB_ACTION_PATH}/src/check.mjs"

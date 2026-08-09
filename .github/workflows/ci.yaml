@@ -17,6 +17,8 @@ jobs:
           persist-credentials: false
       - name: cooldown-check unit tests
         run: node --test actions/cooldown-check/test/check.test.mjs
+      - name: dependency-policy unit tests
+        run: node --test actions/dependency-policy/test/check.test.mjs
       - name: pin-docker regression tests
         run: python3 tests/pin_docker_test.py
 

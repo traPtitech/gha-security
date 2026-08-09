@@ -24,6 +24,12 @@ jobs:
       contents: read
     uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@main
 
+  # CI の lockfile 強制と package.json の range / tag 指定を検出して fail
+  dependency-policy:
+    permissions:
+      contents: read
+    uses: traPtitech/gha-security/.github/workflows/dependency-policy.yaml@main
+
   # 公開から日が浅い依存バージョンの混入を検出して fail し、違反内容を PR コメントで通知
   # 緊急時は PR に `cooldown-override` ラベルを付けるとスキップされる
   # 不要な job はまるごと削除してよい（各機能は独立してオン/オフ可能）
