@@ -19,6 +19,7 @@ COPY --from=build /app /app
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 FROM alpine:3.19
 FROM ${BASE_IMAGE}
+FROM alpine@sha256:${DIGEST}
 """
 
 COMPOSE = """\
@@ -81,7 +82,7 @@ def main():
             check(ref in r.stdout, f"check: {ref} を検出")
         for ref in ["scratch", "ghcr.io/traptitech/traq", "mariadb:10.6", "redis:7@sha256"]:
             check(ref not in r.stdout, f"check: {ref} は検出しない")
-        for ref in ["${IMG}", "${BASE_IMAGE}"]:
+        for ref in ["${IMG}", "${BASE_IMAGE}", "alpine@sha256:${DIGEST}"]:
             check(ref in r.stdout, f"check: {ref} を未検証として検出")
 
     # --- fix モード（frizbee スタブ）---

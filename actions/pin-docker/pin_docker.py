@@ -46,12 +46,15 @@ def classify(path: Path) -> str:
 
 
 def needs_pin(ref: str, stages: set[str]) -> bool:
-    if not ref or "@sha256:" in ref:
+    if not ref:
         return False
     low = ref.lower()
     if low == "scratch" or low in stages or ref.isdigit():
         return False
-    return True
+    # 変数を含む参照は、見かけ上 @sha256: があっても実体を固定できない。
+    if "$" in ref:
+        return True
+    return "@sha256:" not in ref
 
 
 def dockerfile_refs(lines: list[str]):
