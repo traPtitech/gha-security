@@ -215,13 +215,14 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   // 組織内パッケージも既定で照会される
   assert.equal(result.checked, 5);
 
-  // しきい値 0 でも、同一versionのartifact/source差し替えは常に拒否する
-  const off = await run({ ...base, thresholds: { npm: 0, go: 3, actions: 0 } });
-  assert.deepEqual(off.violations.map((v) => v.name).sort(), [
-    "go-replace:github.com/a/b@v1.1.0",
-    "npm-lock:old-pkg",
-  ]);
-  assert.equal(off.checked, 1); // go のみ
+  // しきい値 0 でエコシステム単位のオフ（identity検査・照会とも無効）
+  const off = await run({ ...base, thresholds: { npm: 0, go: 0, actions: 0 } });
+  assert.deepEqual(off.violations, []);
+  assert.equal(off.checked, 0);
+
+  // 明示excludeはidentity違反にも適用される
+  const excluded = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 0 }, excludePatterns: ["old-pkg", "github.com/a/b"] });
+  assert.deepEqual(excluded.violations.map((v) => `${v.eco}:${v.name}`).sort(), ["npm:fresh-pkg"]);
 });
 
 test("syncPrComment: create / update / resolve / skip", async () => {

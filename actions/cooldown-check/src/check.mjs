@@ -269,6 +269,8 @@ export async function run(ctx) {
     const base = parser(readFileAt(baseSha, file));
     const head = parser(readFileAt(headSha, file));
     for (const [name, identity] of head) {
+      const subject = label === "npm-lock" ? name : (name.slice(0, name.lastIndexOf("@")) || name);
+      if (matchesAny(subject, excludes)) continue;
       if ((flagNew || base.has(name)) && base.get(name) !== identity) {
         identityViolations.push({ eco: "identity", name: `${label}:${name}`, version: identity, file, reason: "artifact/source identity changed" });
       }
@@ -290,14 +292,14 @@ export async function run(ctx) {
     const basename = file.split("/").pop();
     if (file.includes("node_modules/")) continue;
     if (basename === "package-lock.json" || basename === "npm-shrinkwrap.json") {
-      collectIdentityChanges(file, parsePackageLockArtifacts, "npm-lock");
+      if (thresholds.npm > 0) collectIdentityChanges(file, parsePackageLockArtifacts, "npm-lock");
       collect(file, parsePackageLock, "npm");
     } else if (NPM_LOCKFILES.has(basename)) {
       collect(file, NPM_LOCKFILES.get(basename), "npm");
     } else if (basename === "package.json") {
       collect(file, parsePackageJsonExact, "npm");
     } else if (basename === "go.mod") {
-      collectIdentityChanges(file, parseGoReplaces, "go-replace", true);
+      if (thresholds.go > 0) collectIdentityChanges(file, parseGoReplaces, "go-replace", true);
       collect(file, parseGoMod, "go");
     } else if (basename === "go.sum") {
       collect(file, parseGoSum, "go");
