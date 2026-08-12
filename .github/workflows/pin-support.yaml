@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: ${{ inputs.mode == 'commit' }}
 
-      - uses: traPtitech/gha-security/actions/setup-tools@main
+      - uses: traPtitech/gha-security/actions/setup-tools@5f05a83ab824f4327126c102c0b1be10017e2758
 
       - name: Pin actions added in this PR
         env:
@@ -77,7 +77,7 @@ jobs:
 
       - name: Pin docker images in changed files
         if: inputs.pin-docker && steps.docker-files.outputs.files != ''
-        uses: traPtitech/gha-security/actions/pin-docker@main
+        uses: traPtitech/gha-security/actions/pin-docker@5f05a83ab824f4327126c102c0b1be10017e2758
         with:
           mode: fix
           files: ${{ steps.docker-files.outputs.files }}

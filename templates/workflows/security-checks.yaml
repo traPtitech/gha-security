@@ -14,7 +14,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: traPtitech/gha-security/.github/workflows/pin-support.yaml@main
+    uses: traPtitech/gha-security/.github/workflows/pin-support.yaml@d12cd85a21bf6bf8009f5c08515d7251aac6f596
     with:
       mode: suggest # commit にすると PR ブランチへ直接修正コミットを push する（要 contents: write）
 
@@ -22,13 +22,13 @@ jobs:
   pin-check:
     permissions:
       contents: read
-    uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@main
+    uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@d12cd85a21bf6bf8009f5c08515d7251aac6f596
 
   # CI の lockfile 強制と package.json の range / tag 指定を検出して fail
   dependency-policy:
     permissions:
       contents: read
-    uses: traPtitech/gha-security/.github/workflows/dependency-policy.yaml@main
+    uses: traPtitech/gha-security/.github/workflows/dependency-policy.yaml@d12cd85a21bf6bf8009f5c08515d7251aac6f596
 
   # 公開から日が浅い依存バージョンの混入を検出して fail し、違反内容を PR コメントで通知
   # 緊急時は PR に `cooldown-override` ラベルを付けるとスキップされる
@@ -37,7 +37,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write # 違反の PR コメント投稿用（pr-comment: false なら read のみで可）
-    uses: traPtitech/gha-security/.github/workflows/cooldown-check.yaml@main
+    uses: traPtitech/gha-security/.github/workflows/cooldown-check.yaml@d12cd85a21bf6bf8009f5c08515d7251aac6f596
     # with:
     #   pr-comment: false        # PR コメント通知を無効化する場合
     #   npm-min-age-days: 0      # npm チェックを無効化する場合
