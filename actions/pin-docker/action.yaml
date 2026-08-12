@@ -16,6 +16,15 @@ inputs:
   image-exclude-regex:
     description: 除外するイメージ参照の正規表現
     default: ""
+  allowed-registries:
+    description: "fix モードで digest 解決を許可するレジストリ（カンマ区切り）。既定: docker.io,ghcr.io,quay.io。private registry は明示的に追加する"
+    default: "docker.io,ghcr.io,quay.io"
+  max-resolutions:
+    description: "fix モードで解決する異なるイメージ参照の最大数（既定: 50）"
+    default: "50"
+  resolution-timeout:
+    description: "frizbee による各イメージ解決のタイムアウト秒数（既定: 15）"
+    default: "15"
 runs:
   using: composite
   steps:
@@ -26,12 +35,18 @@ runs:
         FILES: ${{ inputs.files }}
         FILE_EXCLUDE: ${{ inputs.file-exclude-regex }}
         IMAGE_EXCLUDE: ${{ inputs.image-exclude-regex }}
+        ALLOWED_REGISTRIES: ${{ inputs.allowed-registries }}
+        MAX_RESOLUTIONS: ${{ inputs.max-resolutions }}
+        RESOLUTION_TIMEOUT: ${{ inputs.resolution-timeout }}
       run: |
         set -euo pipefail
         args=()
         [ "$MODE" = "check" ] && args+=(--check)
         [ -n "$FILE_EXCLUDE" ] && args+=(--file-exclude-regex "$FILE_EXCLUDE")
         [ -n "$IMAGE_EXCLUDE" ] && args+=(--image-exclude-regex "$IMAGE_EXCLUDE")
+        args+=(--allowed-registries "$ALLOWED_REGISTRIES")
+        args+=(--max-resolutions "$MAX_RESOLUTIONS")
+        args+=(--resolution-timeout "$RESOLUTION_TIMEOUT")
         if [ -n "$FILES" ]; then
           mapfile -t files <<< "$FILES"
           args+=(--files "${files[@]}")
