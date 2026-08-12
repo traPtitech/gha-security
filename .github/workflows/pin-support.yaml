@@ -28,6 +28,18 @@ on:
         description: pin-docker が除外するイメージ参照の正規表現
         type: string
         default: ""
+      allowed-registries:
+        description: fix モードでdigest解決を許可するレジストリ（カンマ区切り）
+        type: string
+        default: "docker.io,ghcr.io,quay.io"
+      max-resolutions:
+        description: fix モードで解決する異なるイメージ参照の最大数
+        type: number
+        default: 50
+      resolution-timeout:
+        description: 各イメージ解決のタイムアウト秒数
+        type: number
+        default: 15
       pinact-exclude-regex:
         description: pinact の修正対象から除外する action の正規表現
         type: string
@@ -79,12 +91,15 @@ jobs:
         id: pin-docker
         if: inputs.pin-docker && steps.docker-files.outputs.files != ''
         continue-on-error: true
-        uses: traPtitech/gha-security/actions/pin-docker@ce0b76babbc29dc049e7ef91d39fa4a6c215f114
+        uses: traPtitech/gha-security/actions/pin-docker@42930ae1c2f5e12c05f89918fc6fed0395276067
         with:
           mode: fix
           files: ${{ steps.docker-files.outputs.files }}
           file-exclude-regex: ${{ inputs.file-exclude-regex }}
           image-exclude-regex: ${{ inputs.image-exclude-regex }}
+          allowed-registries: ${{ inputs.allowed-registries }}
+          max-resolutions: ${{ inputs.max-resolutions }}
+          resolution-timeout: ${{ inputs.resolution-timeout }}
 
       - name: Detect fixes
         id: fixes

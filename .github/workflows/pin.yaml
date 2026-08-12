@@ -33,6 +33,18 @@ on:
         description: pin-docker が除外するイメージ参照の正規表現
         type: string
         default: ""
+      allowed-registries:
+        description: fix モードでdigest解決を許可するレジストリ（カンマ区切り）
+        type: string
+        default: "docker.io,ghcr.io,quay.io"
+      max-resolutions:
+        description: fix モードで解決する異なるイメージ参照の最大数
+        type: number
+        default: 50
+      resolution-timeout:
+        description: 各イメージ解決のタイムアウト秒数
+        type: number
+        default: 15
       pr-branch:
         description: 作成する PR のブランチ名
         type: string
@@ -85,11 +97,14 @@ jobs:
 
       - name: Pin docker images
         if: inputs.pin-docker
-        uses: traPtitech/gha-security/actions/pin-docker@ce0b76babbc29dc049e7ef91d39fa4a6c215f114
+        uses: traPtitech/gha-security/actions/pin-docker@42930ae1c2f5e12c05f89918fc6fed0395276067
         with:
           mode: fix
           file-exclude-regex: ${{ inputs.file-exclude-regex }}
           image-exclude-regex: ${{ inputs.image-exclude-regex }}
+          allowed-registries: ${{ inputs.allowed-registries }}
+          max-resolutions: ${{ inputs.max-resolutions }}
+          resolution-timeout: ${{ inputs.resolution-timeout }}
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
