@@ -219,14 +219,22 @@ export function makeLookups(fetchImpl, token, apiUrl = "https://api.github.com")
       if (data?.Time) return { date: new Date(data.Time) };
       return { warn: `Go proxy に ${module_}@${version} の公開日時が見つかりません` };
     },
-    async action(owner, repo, tag) {
+    async action(owner, repo, tag, pinnedSha) {
       const headers = { "user-agent": "cooldown-check", accept: "application/vnd.github+json" };
       if (token) headers.authorization = `Bearer ${token}`;
       for (const t of [tag, tag.startsWith("v") ? tag.slice(1) : `v${tag}`]) {
-        const data = await get(`${apiUrl}/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(t)}`, headers);
-        if (data?.published_at) return { date: new Date(data.published_at) };
+        const release = await get(`${apiUrl}/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(t)}`, headers);
+        if (!release?.published_at) continue;
+        if (!release.tag_name || !pinnedSha) return { warn: `${owner}/${repo}: release tag association cannot be verified against the pinned SHA` };
+        const ref = await get(`${apiUrl}/repos/${owner}/${repo}/git/ref/tags/${encodeURIComponent(release.tag_name)}`, headers);
+        let object = ref?.object;
+        if (object?.type === "tag" && object.sha) object = (await get(`${apiUrl}/repos/${owner}/${repo}/git/tags/${object.sha}`, headers))?.object;
+        if (object?.type !== "commit" || object.sha?.toLowerCase() !== pinnedSha.toLowerCase()) {
+          return { warn: `${owner}/${repo}: release tag ${release.tag_name} does not resolve to the pinned SHA` };
+        }
+        return { date: new Date(release.published_at) };
       }
-      return { warn: `${owner}/${repo} のリリース ${tag} の公開日時が取得できません（リリース未作成の可能性）` };
+      return { warn: `${owner}/${repo}: release ${tag} has no published release timestamp; cooldown cannot be verified` };
     },
   };
 }
@@ -314,7 +322,7 @@ export async function run(ctx) {
           unverified.push({ eco: "actions", name: `${owner}/${repo}`, version: ref, file, reason });
           continue;
         }
-        targets.push({ eco: "actions", name: `${owner}/${repo}`, version, file, threshold: thresholds.actions });
+        targets.push({ eco: "actions", name: `${owner}/${repo}`, version, pinnedSha: isSha ? ref : undefined, file, threshold: thresholds.actions });
       }
     }
   }
@@ -328,7 +336,7 @@ export async function run(ctx) {
     let result;
     if (t.eco === "npm") result = await lookups.npm(t.name, t.version);
     else if (t.eco === "go") result = await lookups.go(t.name, t.version);
-    else result = await lookups.action(...t.name.split("/"), t.version);
+    else result = await lookups.action(...t.name.split("/"), t.version, t.pinnedSha);
     if (result.warn) {
       warnings.push(`${t.file}: ${result.warn}`);
       unverified.push({ ...t, reason: result.warn });

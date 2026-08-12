@@ -2,7 +2,8 @@ name: cooldown-check
 description: |
   PR の diff から新規追加/変更された依存を抽出し、公開から min-age 日未満の
   バージョンが入っていたら fail する（手動 bump・bot 経由を問わず全 PR に効く）。
-  対象: npm 系 lockfile / package.json 厳密指定 / go.mod / go.sum / GitHub Actions の uses:
+  GitHub Actions は SHA 固定 + バージョンコメントの場合、GitHub API で release tag が
+  その SHA に解決されることも確認する。確認不能または不一致は fail closed。
   呼び出し側で fetch-depth: 0 の checkout が必要。
 inputs:
   npm-min-age-days:

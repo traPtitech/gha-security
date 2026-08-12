@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   parsePackageLock, parsePnpmLock, parseYarnLock, parseBunLock,
   parsePackageJsonExact, parseGoMod, parseGoSum, parseWorkflowUses,
-  parsePackageLockArtifacts, diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
+  parsePackageLockArtifacts, diffDeps, globToRegExp, matchesAny, makeLookups, run, syncPrComment, COMMENT_MARKER,
 } from "../src/check.mjs";
 
 const get = (map, name) => [...(map.get(name) ?? [])];
@@ -153,6 +153,29 @@ test("glob exclude", () => {
   assert.ok(matchesAny("traptitech/gha-security", pats));
   assert.ok(!matchesAny("lodash", pats));
 });
+
+test("makeLookups.action verifies release tags resolve to the pinned SHA", async () => {
+  const sha = "a".repeat(40);
+  const request = (tagObject) => async (url) => {
+    if (url.endsWith("/releases/tags/v7.0.1")) return { ok: true, json: async () => ({ tag_name: "v7.0.1", published_at: "2026-01-01T00:00:00Z" }) };
+    if (url.endsWith("/git/ref/tags/v7.0.1")) return { ok: true, json: async () => ({ object: tagObject }) };
+    if (url.endsWith("/git/tags/tag-object")) return { ok: true, json: async () => ({ object: { type: "commit", sha } }) };
+    throw new Error(`unexpected URL: ${url}`);
+  };
+
+  const direct = await makeLookups(request({ type: "commit", sha }), "token", "https://api.example")
+    .action("actions", "checkout", "v7.0.1", sha);
+  assert.equal(direct.date.toISOString(), "2026-01-01T00:00:00.000Z");
+
+  const annotated = await makeLookups(request({ type: "tag", sha: "tag-object" }), "token", "https://api.example")
+    .action("actions", "checkout", "v7.0.1", sha);
+  assert.equal(annotated.date.toISOString(), "2026-01-01T00:00:00.000Z");
+
+  const mismatch = await makeLookups(request({ type: "commit", sha: "b".repeat(40) }), "token", "https://api.example")
+    .action("actions", "checkout", "v7.0.1", sha);
+  assert.match(mismatch.warn, /does not resolve to the pinned SHA/);
+});
+
 
 test("run(): flags fresh versions, respects thresholds and excludes", async () => {
   const NOW = Date.parse("2026-07-24T00:00:00Z");
