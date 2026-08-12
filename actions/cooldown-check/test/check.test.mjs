@@ -242,6 +242,26 @@ test("run(): fails closed on unverified lookups unless explicitly opted out", as
   const open = await run({ ...ctx, failOnUnverified: false });
   assert.equal(open.unverified.length, 1);
   assert.equal(open.violations.length, 0);
+
+  const sha = "a".repeat(40);
+  const missingComment = await run({
+    ...ctx,
+    changedFiles: [".github/workflows/ci.yaml"],
+    readFileAt: (sha_) => sha_ === "head" ? `uses: actions/checkout@${sha}\n` : "",
+    thresholds: { npm: 0, go: 0, actions: 3 },
+    lookups: {},
+  });
+  assert.equal(missingComment.unverified.length, 1);
+  assert.equal(missingComment.violations.length, 1);
+  const missingCommentOptOut = await run({
+    ...ctx,
+    changedFiles: [".github/workflows/ci.yaml"],
+    readFileAt: (sha_) => sha_ === "head" ? `uses: actions/checkout@${sha}\n` : "",
+    thresholds: { npm: 0, go: 0, actions: 3 },
+    lookups: {},
+    failOnUnverified: false,
+  });
+  assert.equal(missingCommentOptOut.violations.length, 0);
 });
 
 test("syncPrComment: create / update / resolve / skip", async () => {

@@ -309,7 +309,9 @@ export async function run(ctx) {
         const isSha = /^[0-9a-f]{40}$/.test(ref);
         const version = isSha ? comment : ref;
         if (!version) {
-          warnings.push(`${file}: \`${spec}\` は SHA 固定ですがバージョンコメントがないため公開日時を確認できません`);
+          const reason = `\`${spec}\` は SHA 固定ですがバージョンコメントがないため公開日時を確認できません`;
+          warnings.push(`${file}: ${reason}`);
+          unverified.push({ eco: "actions", name: `${owner}/${repo}`, version: ref, file, reason });
           continue;
         }
         targets.push({ eco: "actions", name: `${owner}/${repo}`, version, file, threshold: thresholds.actions });
