@@ -5,8 +5,6 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 - **pinning**: GitHub Actions の `uses:` を 40 桁 commit SHA に、Docker イメージ参照を `@sha256:` digest に固定する
 - **cooldown**: 公開から日が浅い依存バージョンの混入を防ぐ（bot 経由・手動 bump を問わず）
 
-背景と全体設計は [監査レポートと整備計画](https://github.com/traPtitech)（security-review リポジトリ）を参照。
-
 ## 提供するもの
 
 ### 再利用ワークフロー（`.github/workflows/`）
