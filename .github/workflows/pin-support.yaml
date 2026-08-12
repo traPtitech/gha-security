@@ -76,8 +76,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Pin docker images in changed files
+        id: pin-docker
         if: inputs.pin-docker && steps.docker-files.outputs.files != ''
-        uses: traPtitech/gha-security/actions/pin-docker@5f05a83ab824f4327126c102c0b1be10017e2758
+        continue-on-error: true
+        uses: traPtitech/gha-security/actions/pin-docker@ce0b76babbc29dc049e7ef91d39fa4a6c215f114
         with:
           mode: fix
           files: ${{ steps.docker-files.outputs.files }}
@@ -113,3 +115,9 @@ jobs:
         with:
           tool_name: pin-support
           fail_on_error: false
+
+      - name: Fail on unresolved Docker references
+        if: always() && steps.pin-docker.outcome == 'failure'
+        run: |
+          echo "pin-support: Docker イメージ参照に未解決または未固定の項目があります ❌" >> "$GITHUB_STEP_SUMMARY"
+          exit 1

@@ -46,11 +46,15 @@ def classify(path: Path) -> str:
 
 
 def needs_pin(ref: str, stages: set[str]) -> bool:
-    if not ref or "$" in ref or "@sha256:" in ref:
+    if not ref:
         return False
     low = ref.lower()
     if low == "scratch" or low in stages or ref.isdigit():
         return False
+    # image名やtagが変数でも、digest suffixがリテラルならcontent identityは固定される。
+    if re.search(r"@sha256:[0-9a-f]{64}$", ref, re.IGNORECASE):
+        return False
+    # digest部を含む変数参照は、見かけ上 @sha256: があっても実体を固定できない。
     return True
 
 
@@ -70,14 +74,14 @@ def dockerfile_refs(lines: list[str]):
         m = COPY_FROM_RE.match(line)
         if m:
             ref = m.group(1)
-            # ステージ番号・ステージ名でなく、イメージ参照らしいもののみ
+            # 裸の名前は named build context と区別できないため自動書換えしない。
             if needs_pin(ref, stages) and ("/" in ref or ":" in ref):
                 out.append((i, ref))
     return out
 
 
 def compose_refs(lines: list[str]):
-    """image: 行のうち、同一ブロックに build: がないものを返す。"""
+    """image: 行のうち、同一サービスに build: がないpull-only参照を返す。"""
 
     def indent(s: str) -> int:
         return len(s) - len(s.lstrip(" "))
@@ -173,6 +177,9 @@ def main() -> int:
             unpinned.append((path, ref))
             if args.check:
                 continue
+            if "$" in ref:
+                failed.append((path, ref))
+                continue
             digest = resolver.digest(ref)
             if digest is None:
                 failed.append((path, ref))
@@ -201,6 +208,8 @@ def main() -> int:
             f.write("\n".join(summary) + "\n")
 
     if args.check and unpinned:
+        return 1
+    if not args.check and failed:
         return 1
     return 0
 

@@ -85,7 +85,7 @@ jobs:
 
       - name: Pin docker images
         if: inputs.pin-docker
-        uses: traPtitech/gha-security/actions/pin-docker@5f05a83ab824f4327126c102c0b1be10017e2758
+        uses: traPtitech/gha-security/actions/pin-docker@ce0b76babbc29dc049e7ef91d39fa4a6c215f114
         with:
           mode: fix
           file-exclude-regex: ${{ inputs.file-exclude-regex }}
