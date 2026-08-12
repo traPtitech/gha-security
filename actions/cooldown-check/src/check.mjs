@@ -47,20 +47,20 @@ export function parsePackageLockArtifacts(text) {
   const map = new Map();
   let data;
   try { data = JSON.parse(text); } catch { return map; }
-  const addArtifact = (name, meta) => {
-    if (!name || !meta?.version || meta.link) return;
-    map.set(`${name}@${meta.version}`, `${meta.resolved ?? ""}\u0000${meta.integrity ?? ""}`);
+  const addArtifact = (installPath, meta) => {
+    if (!installPath || !meta?.version || meta.link) return;
+    map.set(installPath, `${meta.version}\u0000${meta.resolved ?? ""}\u0000${meta.integrity ?? ""}`);
   };
   if (data && typeof data.packages === "object" && data.packages) {
     for (const [key, meta] of Object.entries(data.packages)) {
-      const idx = key.lastIndexOf("node_modules/");
-      if (idx !== -1) addArtifact(key.slice(idx + "node_modules/".length), meta);
+      if (key.includes("node_modules/")) addArtifact(key, meta);
     }
   } else if (data && typeof data.dependencies === "object") {
-    const walk = (deps) => {
+    const walk = (deps, parent = "") => {
       for (const [name, meta] of Object.entries(deps || {})) {
-        addArtifact(name, meta);
-        if (meta?.dependencies) walk(meta.dependencies);
+        const installPath = `${parent}${parent ? "/node_modules/" : "node_modules/"}${name}`;
+        addArtifact(installPath, meta);
+        if (meta?.dependencies) walk(meta.dependencies, installPath);
       }
     };
     walk(data.dependencies);
@@ -146,20 +146,6 @@ export function parseGoMod(text) {
       const m = line.match(/^\s+(\S+)\s+(v\S+)/);
       if (m) add(map, m[1], m[2]);
     }
-  }
-  return map;
-}
-
-export function parseGoReplaces(text) {
-  const map = new Map();
-  let inReplace = false;
-  for (const line of text.split("\n")) {
-    if (/^replace\s*\(/.test(line)) { inReplace = true; continue; }
-    if (inReplace && /^\)/.test(line)) { inReplace = false; continue; }
-    const source = inReplace ? line.trim() : (line.startsWith("replace ") ? line.slice("replace ".length) : "");
-    if (!source) continue;
-    const m = source.match(/^(\S+)(?:\s+(v\S+))?\s+=>\s+(\S+)(?:\s+(v\S+))?/);
-    if (m) map.set(`${m[1]}@${m[2] ?? ""}`, `${m[3]}@${m[4] ?? ""}`);
   }
   return map;
 }
@@ -270,9 +256,12 @@ export async function run(ctx) {
     const head = parser(readFileAt(headSha, file));
     for (const name of new Set([...base.keys(), ...head.keys()])) {
       const identity = head.get(name);
-      const subject = label === "npm-lock" ? name.slice(0, name.lastIndexOf("@")) : (name.slice(0, name.lastIndexOf("@")) || name);
+      const subject = label === "npm-lock" ? name.slice(name.lastIndexOf("node_modules/") + "node_modules/".length) : (name.slice(0, name.lastIndexOf("@")) || name);
       if (matchesAny(subject, excludes)) continue;
-      if ((flagNew || base.has(name)) && (detectRemoved || identity !== undefined) && base.get(name) !== identity) {
+      const [beforeVersion] = (base.get(name) ?? "").split("\u0000");
+      const [afterVersion] = (identity ?? "").split("\u0000");
+      const versionChanged = label === "npm-lock" && beforeVersion !== afterVersion;
+      if (!versionChanged && (flagNew || base.has(name)) && (detectRemoved || identity !== undefined) && base.get(name) !== identity) {
         identityViolations.push({ eco: "identity", name: `${label}:${name}`, version: identity ?? "(removed)", file, reason: "artifact/source identity changed" });
       }
     }
@@ -300,7 +289,6 @@ export async function run(ctx) {
     } else if (basename === "package.json") {
       collect(file, parsePackageJsonExact, "npm");
     } else if (basename === "go.mod") {
-      if (thresholds.go > 0) collectIdentityChanges(file, parseGoReplaces, "go-replace", { flagNew: true, detectRemoved: true });
       collect(file, parseGoMod, "go");
     } else if (basename === "go.sum") {
       collect(file, parseGoSum, "go");

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePackageLock, parsePnpmLock, parseYarnLock, parseBunLock,
-  parsePackageJsonExact, parseGoMod, parseGoSum, parseGoReplaces, parseWorkflowUses,
+  parsePackageJsonExact, parseGoMod, parseGoSum, parseWorkflowUses,
   parsePackageLockArtifacts, diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
 } from "../src/check.mjs";
 
@@ -36,11 +36,13 @@ test("parsePackageLock v1", () => {
   assert.deepEqual(get(map, "nested"), ["1.0.0"]);
 });
 
-test("parsePackageLockArtifacts includes resolved and integrity", () => {
+test("parsePackageLockArtifacts keeps installation paths separate", () => {
   const artifacts = parsePackageLockArtifacts(JSON.stringify({ lockfileVersion: 3, packages: {
     "node_modules/pkg": { version: "1.2.3", resolved: "https://registry.example/pkg.tgz", integrity: "sha512-good" },
+    "node_modules/a/node_modules/pkg": { version: "1.2.3", resolved: "https://registry.example/pkg-nested.tgz", integrity: "sha512-nested" },
   } }));
-  assert.equal(artifacts.get("pkg@1.2.3"), "https://registry.example/pkg.tgz\u0000sha512-good");
+  assert.equal(artifacts.get("node_modules/pkg"), "1.2.3\u0000https://registry.example/pkg.tgz\u0000sha512-good");
+  assert.equal(artifacts.get("node_modules/a/node_modules/pkg"), "1.2.3\u0000https://registry.example/pkg-nested.tgz\u0000sha512-nested");
 });
 
 test("parsePnpmLock v9/v6/v5 keys", () => {
@@ -116,17 +118,6 @@ test("parseGoMod block and single require", () => {
   assert.equal(map.has("github.com/x/y"), false);
 });
 
-test("parseGoReplaces records single and block replacements", () => {
-  const replaces = parseGoReplaces([
-    "replace example.com/a v1.0.0 => example.com/fork v1.0.0",
-    "replace (",
-    "  example.com/b => ../local-b",
-    ")",
-  ].join("\n"));
-  assert.equal(replaces.get("example.com/a@v1.0.0"), "example.com/fork@v1.0.0");
-  assert.equal(replaces.get("example.com/b@"), "../local-b@");
-});
-
 test("parseGoSum strips /go.mod suffix", () => {
   const map = parseGoSum([
     "github.com/a/b v1.2.3 h1:hash=",
@@ -181,7 +172,7 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
         "node_modules/@traptitech/own": { version: "0.0.1" },
       } }),
       ".github/workflows/ci.yaml": "      - uses: actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v7.0.1\n",
-      "go.mod": "require github.com/a/b v1.1.0\nreplace github.com/a/b v1.1.0 => example.com/fork v1.1.0\n",
+      "go.mod": "require github.com/a/b v1.1.0\n",
     },
   };
   const dates = {
@@ -207,8 +198,7 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   const flagged = result.violations.map((v) => `${v.eco}:${v.name}@${v.version}`).sort();
   assert.deepEqual(flagged, [
     "actions:actions/checkout@v7.0.1",
-    "identity:go-replace:github.com/a/b@v1.1.0@example.com/fork@v1.1.0",
-    "identity:npm-lock:old-pkg@1.0.0@https://registry.example/replaced.tgz\u0000sha512-replaced",
+    "identity:npm-lock:node_modules/old-pkg@1.0.0\u0000https://registry.example/replaced.tgz\u0000sha512-replaced",
     "npm:fresh-pkg@2.0.0",
   ]);
   assert.equal(result.warnings.length, 0);
@@ -221,7 +211,7 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   assert.equal(off.checked, 0);
 
   // 明示excludeはidentity違反にも適用される
-  const excluded = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 0 }, excludePatterns: ["old-pkg", "github.com/a/b"] });
+  const excluded = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 0 }, excludePatterns: ["old-pkg"] });
   assert.deepEqual(excluded.violations.map((v) => `${v.eco}:${v.name}`).sort(), ["npm:fresh-pkg"]);
 
   // 通常のversion更新はidentity差替えではなく、cooldown照会だけに委ねる
@@ -233,14 +223,6 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   });
   assert.equal(upgraded.violations.some((v) => v.eco === "identity"), false);
 
-  // 既存replaceの削除も、元sourceへ戻すidentity変更として拒否する
-  const replaceRemoved = await run({
-    ...base,
-    changedFiles: ["go.mod"],
-    thresholds: { npm: 0, go: 3, actions: 0 },
-    readFileAt: (sha) => sha === "base" ? "require github.com/a/b v1.0.0\nreplace github.com/a/b => example.com/fork v1.0.0\n" : "require github.com/a/b v1.0.0\n",
-  });
-  assert.deepEqual(replaceRemoved.violations.filter((v) => v.eco === "identity").map((v) => v.name), ["go-replace:github.com/a/b@"]);
 });
 
 test("syncPrComment: create / update / resolve / skip", async () => {
