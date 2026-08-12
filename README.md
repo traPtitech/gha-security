@@ -35,7 +35,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 
 ## 導入手順（各リポジトリ）
 
-1. `templates/workflows/security-checks.yaml` を `.github/workflows/` にコピー
+1. `templates/workflows/security-checks.yaml` を `.github/workflows/` にコピー（`uses:` の `gha-security` SHA は固定参照。更新はレビュー済みPRで行う）
 2. （bot なしリポジトリ）`templates/workflows/pin.yaml` もコピーし、`update: true` にする
 3. `templates/dependabot.yml` を参考に `.github/dependabot.yml` を整備（Renovate リポジトリは [renovate-config](https://github.com/traPtitech/renovate-config) を extends）
 4. パッケージマネージャに応じて `templates/client-cooldown/` の設定をコミット

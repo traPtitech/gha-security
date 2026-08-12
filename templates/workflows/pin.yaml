@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   pin:
-    uses: traPtitech/gha-security/.github/workflows/pin.yaml@main
+    uses: traPtitech/gha-security/.github/workflows/pin.yaml@5f05a83ab824f4327126c102c0b1be10017e2758
     with:
       # Dependabot / Renovate を使っていないリポジトリのみ true にする
       # （bot 導入済みリポジトリで true にすると更新 PR が競合する）

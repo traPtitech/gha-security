@@ -34,5 +34,5 @@ jobs:
       - name: Dogfood pin-check on own workflows
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        # 自リポジトリの再利用ワークフロー相互参照（traPtitech/gha-security/...@main）は除外
+        # 自リポジトリの再利用ワークフロー相互参照はフルSHA固定済みのため除外
         run: pinact run --check --verify-comment --exclude '^traPtitech/gha-security/'

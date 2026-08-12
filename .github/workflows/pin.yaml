@@ -65,7 +65,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: traPtitech/gha-security/actions/setup-tools@main
+      - uses: traPtitech/gha-security/actions/setup-tools@5f05a83ab824f4327126c102c0b1be10017e2758
 
       - name: Pin GitHub Actions
         env:
@@ -85,7 +85,7 @@ jobs:
 
       - name: Pin docker images
         if: inputs.pin-docker
-        uses: traPtitech/gha-security/actions/pin-docker@main
+        uses: traPtitech/gha-security/actions/pin-docker@5f05a83ab824f4327126c102c0b1be10017e2758
         with:
           mode: fix
           file-exclude-regex: ${{ inputs.file-exclude-regex }}
