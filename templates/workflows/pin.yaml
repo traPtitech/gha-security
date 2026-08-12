@@ -20,7 +20,7 @@ jobs:
       update: false
       # 組織内も既定で固定対象。必要な例外だけ明示する
       # pinact-exclude-regex: '^traPtitech/example$'
-      # image-exclude-regex: '^ghcr\\.io/traptitech/example@'
+      # image-exclude-regex: '^ghcr\.io/traptitech/example(?:[:@]|$)'
     # App トークンを渡すと、作成された PR で CI が走るようになる（org secrets を想定）
     secrets:
       app-id: ${{ secrets.GHA_SECURITY_APP_ID }}
