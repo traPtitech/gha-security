@@ -40,7 +40,7 @@ test("parsePackageLockArtifacts includes resolved and integrity", () => {
   const artifacts = parsePackageLockArtifacts(JSON.stringify({ lockfileVersion: 3, packages: {
     "node_modules/pkg": { version: "1.2.3", resolved: "https://registry.example/pkg.tgz", integrity: "sha512-good" },
   } }));
-  assert.equal(artifacts.get("pkg"), "1.2.3\u0000https://registry.example/pkg.tgz\u0000sha512-good");
+  assert.equal(artifacts.get("pkg@1.2.3"), "https://registry.example/pkg.tgz\u0000sha512-good");
 });
 
 test("parsePnpmLock v9/v6/v5 keys", () => {
@@ -208,7 +208,7 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   assert.deepEqual(flagged, [
     "actions:actions/checkout@v7.0.1",
     "identity:go-replace:github.com/a/b@v1.1.0@example.com/fork@v1.1.0",
-    "identity:npm-lock:old-pkg@1.0.0\u0000https://registry.example/replaced.tgz\u0000sha512-replaced",
+    "identity:npm-lock:old-pkg@1.0.0@https://registry.example/replaced.tgz\u0000sha512-replaced",
     "npm:fresh-pkg@2.0.0",
   ]);
   assert.equal(result.warnings.length, 0);
@@ -223,6 +223,24 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   // 明示excludeはidentity違反にも適用される
   const excluded = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 0 }, excludePatterns: ["old-pkg", "github.com/a/b"] });
   assert.deepEqual(excluded.violations.map((v) => `${v.eco}:${v.name}`).sort(), ["npm:fresh-pkg"]);
+
+  // 通常のversion更新はidentity差替えではなく、cooldown照会だけに委ねる
+  const upgraded = await run({
+    ...base,
+    changedFiles: ["package-lock.json"],
+    thresholds: { npm: 7, go: 0, actions: 0 },
+    readFileAt: (sha) => JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/old-pkg": { version: sha === "base" ? "1.0.0" : "2.0.0", resolved: `https://registry.example/old-pkg-${sha}.tgz`, integrity: `sha512-${sha}` } } }),
+  });
+  assert.equal(upgraded.violations.some((v) => v.eco === "identity"), false);
+
+  // 既存replaceの削除も、元sourceへ戻すidentity変更として拒否する
+  const replaceRemoved = await run({
+    ...base,
+    changedFiles: ["go.mod"],
+    thresholds: { npm: 0, go: 3, actions: 0 },
+    readFileAt: (sha) => sha === "base" ? "require github.com/a/b v1.0.0\nreplace github.com/a/b => example.com/fork v1.0.0\n" : "require github.com/a/b v1.0.0\n",
+  });
+  assert.deepEqual(replaceRemoved.violations.filter((v) => v.eco === "identity").map((v) => v.name), ["go-replace:github.com/a/b@"]);
 });
 
 test("syncPrComment: create / update / resolve / skip", async () => {

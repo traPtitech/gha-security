@@ -49,7 +49,7 @@ export function parsePackageLockArtifacts(text) {
   try { data = JSON.parse(text); } catch { return map; }
   const addArtifact = (name, meta) => {
     if (!name || !meta?.version || meta.link) return;
-    map.set(name, `${meta.version}\u0000${meta.resolved ?? ""}\u0000${meta.integrity ?? ""}`);
+    map.set(`${name}@${meta.version}`, `${meta.resolved ?? ""}\u0000${meta.integrity ?? ""}`);
   };
   if (data && typeof data.packages === "object" && data.packages) {
     for (const [key, meta] of Object.entries(data.packages)) {
@@ -265,14 +265,15 @@ export async function run(ctx) {
   const identityViolations = [];
   const targets = []; // {eco, name, version, file, threshold}
 
-  const collectIdentityChanges = (file, parser, label, flagNew = false) => {
+  const collectIdentityChanges = (file, parser, label, { flagNew = false, detectRemoved = false } = {}) => {
     const base = parser(readFileAt(baseSha, file));
     const head = parser(readFileAt(headSha, file));
-    for (const [name, identity] of head) {
-      const subject = label === "npm-lock" ? name : (name.slice(0, name.lastIndexOf("@")) || name);
+    for (const name of new Set([...base.keys(), ...head.keys()])) {
+      const identity = head.get(name);
+      const subject = label === "npm-lock" ? name.slice(0, name.lastIndexOf("@")) : (name.slice(0, name.lastIndexOf("@")) || name);
       if (matchesAny(subject, excludes)) continue;
-      if ((flagNew || base.has(name)) && base.get(name) !== identity) {
-        identityViolations.push({ eco: "identity", name: `${label}:${name}`, version: identity, file, reason: "artifact/source identity changed" });
+      if ((flagNew || base.has(name)) && (detectRemoved || identity !== undefined) && base.get(name) !== identity) {
+        identityViolations.push({ eco: "identity", name: `${label}:${name}`, version: identity ?? "(removed)", file, reason: "artifact/source identity changed" });
       }
     }
   };
@@ -299,7 +300,7 @@ export async function run(ctx) {
     } else if (basename === "package.json") {
       collect(file, parsePackageJsonExact, "npm");
     } else if (basename === "go.mod") {
-      if (thresholds.go > 0) collectIdentityChanges(file, parseGoReplaces, "go-replace", true);
+      if (thresholds.go > 0) collectIdentityChanges(file, parseGoReplaces, "go-replace", { flagNew: true, detectRemoved: true });
       collect(file, parseGoMod, "go");
     } else if (basename === "go.sum") {
       collect(file, parseGoSum, "go");
