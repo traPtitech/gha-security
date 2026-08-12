@@ -39,13 +39,15 @@ test("findWorkflowLockfileViolations rejects mutable installs and accepts lockfi
   }]);
 });
 
-test("findWorkflowLockfileViolations rejects false lockfile flags and unhashed pip requirements", () => {
+test("findWorkflowLockfileViolations rejects false flags, unhashed pip requirements, and flags from other shell commands", () => {
   const violations = findWorkflowLockfileViolations(workflow([
     "      - run: pnpm install --frozen-lockfile=false",
     "      - run: yarn install --immutable=false",
     "      - run: bun install --frozen-lockfile=false",
     "      - run: pip install -r requirements.txt",
     "      - run: python -m pip install -r requirements.txt --require-hashes",
+    "      - run: echo --frozen-lockfile && pnpm install",
+    "      - run: pip install -r a.txt --require-hashes && pip install -r b.txt",
   ]));
 
   assert.deepEqual(violations.map(({ line, command, reason }) => ({ line, command, reason })), [
@@ -53,6 +55,8 @@ test("findWorkflowLockfileViolations rejects false lockfile flags and unhashed p
     { line: 2, command: "yarn install --immutable=false", reason: "yarn install には --immutable または --frozen-lockfile が必要です" },
     { line: 3, command: "bun install --frozen-lockfile=false", reason: "bun install には --frozen-lockfile が必要です" },
     { line: 4, command: "pip install -r requirements.txt", reason: "pip install -r には --require-hashes が必要です" },
+    { line: 6, command: "pnpm install", reason: "pnpm install には --frozen-lockfile が必要です" },
+    { line: 7, command: "pip install -r b.txt", reason: "pip install -r には --require-hashes が必要です" },
   ]);
 });
 
@@ -75,6 +79,21 @@ test("findWorkflowLockfileViolations inspects only inline and block run commands
     { line: 8, command: "npm install" },
     { line: 10, command: "pip install -r requirements.txt" },
   ]);
+});
+
+test("findWorkflowLockfileViolations recognizes YAML block scalar indentation and chomping indicators", () => {
+  const headers = ["|2", ">2-", "|-2"];
+  for (const header of headers) {
+    const violations = findWorkflowLockfileViolations(workflow([
+      `      - run: ${header}`,
+      "          npm install",
+      "          pip install -r requirements.txt",
+    ]));
+    assert.deepEqual(violations.map(({ line, command }) => ({ line, command })), [
+      { line: 2, command: "npm install" },
+      { line: 3, command: "pip install -r requirements.txt" },
+    ], header);
+  }
 });
 
 test("findPackageJsonPinningViolations rejects ranges and dist-tags but permits exact and local specs", () => {

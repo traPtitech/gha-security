@@ -4,6 +4,10 @@ import { join, relative } from "node:path";
 const WORKFLOW_PATH = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 const TRUE_FLAG = (name) => new RegExp(`(?:^|\\s)${name}(?:\\s|$|=true(?:\\s|$))`);
 
+function shellCommands(command) {
+  return command.split(/\s*(?:&&|\|\||[;|])\s*/).map((part) => part.trim()).filter(Boolean);
+}
+
 function commandViolation(file, line, command) {
   if (/\bnpm\s+install\b/.test(command)) {
     return { file, line, command, reason: "npm install は lockfile を厳密に使用しません。npm ci を使ってください" };
@@ -79,15 +83,17 @@ export function findWorkflowLockfileViolations(files) {
       if (command === null) {
         const run = raw.match(/^\s*-?\s*run:\s*(.*)$/);
         if (!run) continue;
-        if (/^[>|][+-]?\s*(?:#.*)?$/.test(run[1])) {
+        if (/^[>|](?:[+-]?[1-9]?|[1-9]?[+-]?)\s*(?:#.*)?$/.test(run[1])) {
           blockIndent = indent;
           continue;
         }
         command = run[1].replace(/\s+#.*$/, "").trim();
       }
       if (!command) continue;
-      const violation = commandViolation(file, index + 1, command);
-      if (violation) violations.push(violation);
+      for (const shellCommand of shellCommands(command)) {
+        const violation = commandViolation(file, index + 1, shellCommand);
+        if (violation) violations.push(violation);
+      }
     }
   }
   return violations;
