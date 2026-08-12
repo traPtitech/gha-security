@@ -46,7 +46,7 @@ def classify(path: Path) -> str:
 
 
 def needs_pin(ref: str, stages: set[str]) -> bool:
-    if not ref or "$" in ref or "@sha256:" in ref:
+    if not ref or "@sha256:" in ref:
         return False
     low = ref.lower()
     if low == "scratch" or low in stages or ref.isdigit():
@@ -70,45 +70,17 @@ def dockerfile_refs(lines: list[str]):
         m = COPY_FROM_RE.match(line)
         if m:
             ref = m.group(1)
-            # ステージ番号・ステージ名でなく、イメージ参照らしいもののみ
-            if needs_pin(ref, stages) and ("/" in ref or ":" in ref):
+            if needs_pin(ref, stages):
                 out.append((i, ref))
     return out
 
 
 def compose_refs(lines: list[str]):
-    """image: 行のうち、同一ブロックに build: がないものを返す。"""
-
-    def indent(s: str) -> int:
-        return len(s) - len(s.lstrip(" "))
-
+    """image: 行を返す。build: 併記でもregistry pullが起こりうるため検査する。"""
     out = []
     for i, line in enumerate(lines):
         m = IMAGE_RE.match(line)
-        if not m or not needs_pin(m.group(3), set()):
-            continue
-        ind = indent(line)
-        sibling_build = False
-        for j in range(i - 1, -1, -1):
-            s = lines[j]
-            if not s.strip() or s.lstrip().startswith("#"):
-                continue
-            if indent(s) < ind:
-                break
-            if indent(s) == ind and re.match(r"^\s*build\s*:", s):
-                sibling_build = True
-                break
-        if not sibling_build:
-            for j in range(i + 1, len(lines)):
-                s = lines[j]
-                if not s.strip() or s.lstrip().startswith("#"):
-                    continue
-                if indent(s) < ind:
-                    break
-                if indent(s) == ind and re.match(r"^\s*build\s*:", s):
-                    sibling_build = True
-                    break
-        if not sibling_build:
+        if m and needs_pin(m.group(3), set()):
             out.append((i, m.group(3)))
     return out
 
@@ -173,6 +145,9 @@ def main() -> int:
             unpinned.append((path, ref))
             if args.check:
                 continue
+            if "$" in ref:
+                failed.append((path, ref))
+                continue
             digest = resolver.digest(ref)
             if digest is None:
                 failed.append((path, ref))
@@ -201,6 +176,8 @@ def main() -> int:
             f.write("\n".join(summary) + "\n")
 
     if args.check and unpinned:
+        return 1
+    if not args.check and failed:
         return 1
     return 0
 

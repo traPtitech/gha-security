@@ -79,8 +79,10 @@ def main():
         check(r.returncode == 1, "check: unpinned で exit 1")
         for ref in ["golang:1.22-alpine", "alpine:3.19", "composer:latest", "nginx:1.25-alpine"]:
             check(ref in r.stdout, f"check: {ref} を検出")
-        for ref in ["scratch", "ghcr.io/traptitech/traq", "mariadb:10.6", "${IMG}", "${BASE_IMAGE}", "redis:7@sha256", "myapp:latest"]:
+        for ref in ["scratch", "ghcr.io/traptitech/traq", "mariadb:10.6", "redis:7@sha256"]:
             check(ref not in r.stdout, f"check: {ref} は検出しない")
+        for ref in ["${IMG}", "${BASE_IMAGE}", "myapp:latest"]:
+            check(ref in r.stdout, f"check: {ref} を未検証として検出")
 
     # --- fix モード（frizbee スタブ）---
     with tempfile.TemporaryDirectory() as tmp:
@@ -90,17 +92,15 @@ def main():
         stub.write_text(f'#!/bin/sh\necho "$2@{STUB_DIGEST}"\n')
         stub.chmod(0o755)
         r = run(root, "--frizbee", str(stub), *common)
-        check(r.returncode == 0, "fix: exit 0")
+        check(r.returncode == 1, "fix: 未解決参照があれば exit 1")
         dockerfile = (root / "Dockerfile").read_text()
         compose = (root / "compose.yaml").read_text()
         check(f"golang:1.22-alpine@{STUB_DIGEST} AS build" in dockerfile, "fix: golang を固定")
         check(f"alpine:3.19@{STUB_DIGEST}" in dockerfile, "fix: alpine を固定")
         check(f"--from=composer:latest@{STUB_DIGEST}" in dockerfile, "fix: COPY --from を固定")
-        check("FROM build AS test" in dockerfile, "fix: ステージ参照は無変更")
-        check("FROM scratch" in dockerfile and f"scratch@{STUB_DIGEST}" not in dockerfile, "fix: scratch は無変更")
-        check("FROM ${BASE_IMAGE}" in dockerfile, "fix: 変数参照は無変更")
+        check("FROM ${BASE_IMAGE}" in dockerfile, "fix: Dockerfile 変数参照は未解決のまま")
         check(f"nginx:1.25-alpine@{STUB_DIGEST}" in compose, "fix: compose の image を固定")
-        check("image: myapp:latest\n" in compose, "fix: build 併記サービスは無変更")
+        check(f"image: myapp:latest@{STUB_DIGEST}\n" in compose, "fix: build 併記の image も固定")
         check("image: ghcr.io/traptitech/traq:latest\n" in compose, "fix: 除外イメージは無変更")
         check((root / "compose.dev.yaml").read_text() == COMPOSE_DEV, "fix: 除外ファイルは無変更")
 
