@@ -5,18 +5,16 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 - **pinning**: GitHub Actions の `uses:` を 40 桁 commit SHA に、Docker イメージ参照を `@sha256:` digest に固定する
 - **cooldown**: 公開から日が浅い依存バージョンの混入を防ぐ（bot 経由・手動 bump を問わず）
 
-背景と全体設計は [監査レポートと整備計画](https://github.com/traPtitech)（security-review リポジトリ）を参照。
-
 ## 提供するもの
 
 ### 再利用ワークフロー（`.github/workflows/`）
 
-| ワークフロー | 役割 | トリガー |
+| ワークフロー | 役割 | 呼び出し元の推奨トリガー |
 |---|---|---|
 | `pin-support.yaml` | PR 内の未固定参照を検出し、**修正を suggestion または直接コミットで返す**（作業の肩代わり） | `pull_request` |
 | `pin-check.yaml` | 未固定参照があれば fail する退行防止 lint（`--verify-comment` でコメント偽装も検出） | `pull_request` |
 | `cooldown-check.yaml` | PR で追加/変更された依存に公開 N 日未満の版があれば fail。違反内容は **sticky な PR コメント**（bot コメント1つを更新）でも通知され、解消すると ✅ に変わる | `pull_request` |
-| `dependency-policy.yaml` | CI の lockfile 強制と `package.json` の range / dist-tag 指定を fail する | `workflow_call` |
+| `dependency-policy.yaml` | CI の lockfile 強制と `package.json` の range / dist-tag 指定を fail する | `pull_request` |
 | `pin.yaml` | リポジトリ全体を固定して PR を作成。`update: true` で bot なしリポジトリの追従更新も担う | `schedule` / `workflow_dispatch` |
 
 ### Composite actions（`actions/`）
@@ -86,6 +84,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 
 ```console
 $ node --test actions/cooldown-check/test/check.test.mjs   # cooldown-check のユニットテスト
+$ node --test actions/dependency-policy/test/check.test.mjs # dependency-policy のユニットテスト
 $ python3 tests/pin_docker_test.py                          # pin-docker の回帰テスト（ネットワーク不要）
 ```
 
