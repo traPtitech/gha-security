@@ -81,7 +81,7 @@ def main():
             check(ref in r.stdout, f"check: {ref} を検出")
         for ref in ["scratch", "ghcr.io/traptitech/traq", "mariadb:10.6", "redis:7@sha256"]:
             check(ref not in r.stdout, f"check: {ref} は検出しない")
-        for ref in ["${IMG}", "${BASE_IMAGE}", "myapp:latest"]:
+        for ref in ["${IMG}", "${BASE_IMAGE}"]:
             check(ref in r.stdout, f"check: {ref} を未検証として検出")
 
     # --- fix モード（frizbee スタブ）---
@@ -100,7 +100,7 @@ def main():
         check(f"--from=composer:latest@{STUB_DIGEST}" in dockerfile, "fix: COPY --from を固定")
         check("FROM ${BASE_IMAGE}" in dockerfile, "fix: Dockerfile 変数参照は未解決のまま")
         check(f"nginx:1.25-alpine@{STUB_DIGEST}" in compose, "fix: compose の image を固定")
-        check(f"image: myapp:latest@{STUB_DIGEST}\n" in compose, "fix: build 併記の image も固定")
+        check("image: myapp:latest\n" in compose, "fix: build 併記サービスは無変更")
         check("image: ghcr.io/traptitech/traq:latest\n" in compose, "fix: 除外イメージは無変更")
         check((root / "compose.dev.yaml").read_text() == COMPOSE_DEV, "fix: 除外ファイルは無変更")
 

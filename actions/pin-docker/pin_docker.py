@@ -70,17 +70,45 @@ def dockerfile_refs(lines: list[str]):
         m = COPY_FROM_RE.match(line)
         if m:
             ref = m.group(1)
-            if needs_pin(ref, stages):
+            # 裸の名前は named build context と区別できないため自動書換えしない。
+            if needs_pin(ref, stages) and ("/" in ref or ":" in ref):
                 out.append((i, ref))
     return out
 
 
 def compose_refs(lines: list[str]):
-    """image: 行を返す。build: 併記でもregistry pullが起こりうるため検査する。"""
+    """image: 行のうち、同一サービスに build: がないpull-only参照を返す。"""
+
+    def indent(s: str) -> int:
+        return len(s) - len(s.lstrip(" "))
+
     out = []
     for i, line in enumerate(lines):
         m = IMAGE_RE.match(line)
-        if m and needs_pin(m.group(3), set()):
+        if not m or not needs_pin(m.group(3), set()):
+            continue
+        ind = indent(line)
+        sibling_build = False
+        for j in range(i - 1, -1, -1):
+            s = lines[j]
+            if not s.strip() or s.lstrip().startswith("#"):
+                continue
+            if indent(s) < ind:
+                break
+            if indent(s) == ind and re.match(r"^\s*build\s*:", s):
+                sibling_build = True
+                break
+        if not sibling_build:
+            for j in range(i + 1, len(lines)):
+                s = lines[j]
+                if not s.strip() or s.lstrip().startswith("#"):
+                    continue
+                if indent(s) < ind:
+                    break
+                if indent(s) == ind and re.match(r"^\s*build\s*:", s):
+                    sibling_build = True
+                    break
+        if not sibling_build:
             out.append((i, m.group(3)))
     return out
 
