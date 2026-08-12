@@ -51,7 +51,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: traPtitech/gha-security/actions/cooldown-check@5f05a83ab824f4327126c102c0b1be10017e2758
+      - uses: traPtitech/gha-security/actions/cooldown-check@2fc60b062c6c3c37941efd46ba246b0337b8985e
         with:
           npm-min-age-days: ${{ inputs.npm-min-age-days }}
           go-min-age-days: ${{ inputs.go-min-age-days }}
