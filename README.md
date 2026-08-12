@@ -21,7 +21,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 
 | action | 内容 |
 |---|---|
-| `actions/cooldown-check` | cooldown ゲート本体（Node 製・依存なし）。対象: npm 系lockfile（package-lockではinstallation pathごとの `resolved` / `integrity` を監視）・package.json 厳密指定・go.mod / go.sum・workflows の `uses:` |
+| `actions/cooldown-check` | cooldown ゲート本体（Node 製・依存なし）。対象: npm 系lockfile（package-lockでは**同一ファイル・同一installation path・同一version**の `resolved` / `integrity` を監視）・package.json 厳密指定・go.mod / go.sum・workflows の `uses:`。lockfileのrename/moveをまたぐidentity相関、alias・local/Git sourceの正規化は対象外 |
 | `actions/dependency-policy` | workflow の可変 install（Node / Cargo / Go）と、`pip install -r` の `--require-hashes` 不足を拒否し、`package.json` の semver range / dist-tag を拒否する |
 | `actions/pin-docker` | Dockerfile `FROM` / compose `image:` の digest 固定。解決は frizbee（単一参照モード）、書き換えは同梱スクリプト |
 | `actions/setup-tools` | pinact / frizbee を checksum 検証付きでインストール（内部用） |
