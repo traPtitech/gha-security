@@ -43,6 +43,31 @@ export function parsePackageLock(text) {
   return map;
 }
 
+export function parsePackageLockArtifacts(text) {
+  const map = new Map();
+  let data;
+  try { data = JSON.parse(text); } catch { return map; }
+  const addArtifact = (installPath, meta) => {
+    if (!installPath || !meta?.version || meta.link) return;
+    map.set(installPath, `${meta.version}\u0000${meta.resolved ?? ""}\u0000${meta.integrity ?? ""}`);
+  };
+  if (data && typeof data.packages === "object" && data.packages) {
+    for (const [key, meta] of Object.entries(data.packages)) {
+      if (key.includes("node_modules/")) addArtifact(key, meta);
+    }
+  } else if (data && typeof data.dependencies === "object") {
+    const walk = (deps, parent = "") => {
+      for (const [name, meta] of Object.entries(deps || {})) {
+        const installPath = `${parent}${parent ? "/node_modules/" : "node_modules/"}${name}`;
+        addArtifact(installPath, meta);
+        if (meta?.dependencies) walk(meta.dependencies, installPath);
+      }
+    };
+    walk(data.dependencies);
+  }
+  return map;
+}
+
 export function parsePnpmLock(text) {
   const map = new Map();
   let inPackages = false;
@@ -223,7 +248,24 @@ export async function run(ctx) {
   const excludes = excludePatterns.map(globToRegExp);
   const violations = [];
   const warnings = [];
+  const identityViolations = [];
   const targets = []; // {eco, name, version, file, threshold}
+
+  const collectIdentityChanges = (file, parser, label, { flagNew = false, detectRemoved = false } = {}) => {
+    const base = parser(readFileAt(baseSha, file));
+    const head = parser(readFileAt(headSha, file));
+    for (const name of new Set([...base.keys(), ...head.keys()])) {
+      const identity = head.get(name);
+      const subject = label === "npm-lock" ? name.slice(name.lastIndexOf("node_modules/") + "node_modules/".length) : (name.slice(0, name.lastIndexOf("@")) || name);
+      if (matchesAny(subject, excludes)) continue;
+      const [beforeVersion] = (base.get(name) ?? "").split("\u0000");
+      const [afterVersion] = (identity ?? "").split("\u0000");
+      const versionChanged = label === "npm-lock" && beforeVersion !== afterVersion;
+      if (!versionChanged && (flagNew || base.has(name)) && (detectRemoved || identity !== undefined) && base.get(name) !== identity) {
+        identityViolations.push({ eco: "identity", name: `${label}:${name}`, version: identity ?? "(removed)", file, reason: "artifact/source identity changed" });
+      }
+    }
+  };
 
   const collect = (file, parser, eco) => {
     const threshold = thresholds[eco];
@@ -239,7 +281,10 @@ export async function run(ctx) {
   for (const file of changedFiles) {
     const basename = file.split("/").pop();
     if (file.includes("node_modules/")) continue;
-    if (NPM_LOCKFILES.has(basename)) {
+    if (basename === "package-lock.json" || basename === "npm-shrinkwrap.json") {
+      if (thresholds.npm > 0) collectIdentityChanges(file, parsePackageLockArtifacts, "npm-lock");
+      collect(file, parsePackageLock, "npm");
+    } else if (NPM_LOCKFILES.has(basename)) {
       collect(file, NPM_LOCKFILES.get(basename), "npm");
     } else if (basename === "package.json") {
       collect(file, parsePackageJsonExact, "npm");
@@ -286,7 +331,7 @@ export async function run(ctx) {
       violations.push({ ...t, published: result.date.toISOString(), ageDays });
     }
   }
-  return { violations, warnings, checked: seen.size };
+  return { violations: [...identityViolations, ...violations], warnings, checked: seen.size };
 }
 
 // ---------- PR sticky comment ----------
@@ -356,13 +401,21 @@ async function main() {
 
   const lines = [];
   if (result.violations.length > 0) {
-    lines.push(`### ❄️ cooldown-check: 公開から日が浅いバージョンが ${result.violations.length} 件見つかりました`);
-    lines.push("", "| 種別 | パッケージ | バージョン | 公開日時 | 経過 | しきい値 | ファイル |", "|---|---|---|---|---|---|---|");
-    for (const v of result.violations) {
-      lines.push(`| ${v.eco} | \`${v.name}\` | \`${v.version}\` | ${v.published.slice(0, 10)} | ${v.ageDays.toFixed(1)}日 | ${v.threshold}日 | \`${v.file}\` |`);
+    const identity = result.violations.filter((v) => v.eco === "identity");
+    const cooldown = result.violations.filter((v) => v.eco !== "identity");
+    if (identity.length > 0) {
+      lines.push(`### ❄️ cooldown-check: 依存のartifact/source identity変更が ${identity.length} 件見つかりました`, "");
+      lines.push(...identity.map((v) => `- \`${v.file}\`: \`${v.name}\`（${v.reason}）`));
     }
-    lines.push("", "公開直後のバージョンはサプライチェーン攻撃の検知が間に合っていない可能性があります。",
-      "しきい値の日数が経過してから再実行するか、緊急の場合は PR に override ラベルを付けてください。");
+    if (cooldown.length > 0) {
+      lines.push(`### ❄️ cooldown-check: 公開から日が浅いバージョンが ${cooldown.length} 件見つかりました`);
+      lines.push("", "| 種別 | パッケージ | バージョン | 公開日時 | 経過 | しきい値 | ファイル |", "|---|---|---|---|---|---|---|");
+      for (const v of cooldown) {
+        lines.push(`| ${v.eco} | \`${v.name}\` | \`${v.version}\` | ${v.published.slice(0, 10)} | ${v.ageDays.toFixed(1)}日 | ${v.threshold}日 | \`${v.file}\` |`);
+      }
+    }
+    lines.push("", "公開直後のバージョンまたは依存source identityの変更を確認してください。",
+      "緊急の場合は PR に override ラベルを付けてください。");
   } else {
     lines.push(`cooldown-check: 追加/変更された依存 ${result.checked} 件はすべて cooldown を満たしています ✅`);
   }

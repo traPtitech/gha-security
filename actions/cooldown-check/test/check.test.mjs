@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   parsePackageLock, parsePnpmLock, parseYarnLock, parseBunLock,
   parsePackageJsonExact, parseGoMod, parseGoSum, parseWorkflowUses,
-  diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
+  parsePackageLockArtifacts, diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
 } from "../src/check.mjs";
 
 const get = (map, name) => [...(map.get(name) ?? [])];
@@ -34,6 +34,15 @@ test("parsePackageLock v1", () => {
   }));
   assert.deepEqual(get(map, "lodash"), ["4.17.21"]);
   assert.deepEqual(get(map, "nested"), ["1.0.0"]);
+});
+
+test("parsePackageLockArtifacts keeps installation paths separate", () => {
+  const artifacts = parsePackageLockArtifacts(JSON.stringify({ lockfileVersion: 3, packages: {
+    "node_modules/pkg": { version: "1.2.3", resolved: "https://registry.example/pkg.tgz", integrity: "sha512-good" },
+    "node_modules/a/node_modules/pkg": { version: "1.2.3", resolved: "https://registry.example/pkg-nested.tgz", integrity: "sha512-nested" },
+  } }));
+  assert.equal(artifacts.get("node_modules/pkg"), "1.2.3\u0000https://registry.example/pkg.tgz\u0000sha512-good");
+  assert.equal(artifacts.get("node_modules/a/node_modules/pkg"), "1.2.3\u0000https://registry.example/pkg-nested.tgz\u0000sha512-nested");
 });
 
 test("parsePnpmLock v9/v6/v5 keys", () => {
@@ -150,14 +159,14 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   const files = {
     base: {
       "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {
-        "node_modules/old-pkg": { version: "1.0.0" },
+        "node_modules/old-pkg": { version: "1.0.0", resolved: "https://registry.example/old.tgz", integrity: "sha512-old" },
       } }),
       ".github/workflows/ci.yaml": "      - uses: actions/checkout@v6\n",
       "go.mod": "require github.com/a/b v1.0.0\n",
     },
     head: {
       "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {
-        "node_modules/old-pkg": { version: "1.0.0" },
+        "node_modules/old-pkg": { version: "1.0.0", resolved: "https://registry.example/replaced.tgz", integrity: "sha512-replaced" },
         "node_modules/fresh-pkg": { version: "2.0.0" },
         "node_modules/aged-pkg": { version: "3.0.0" },
         "node_modules/@traptitech/own": { version: "0.0.1" },
@@ -187,15 +196,33 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   };
   const result = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 3 } });
   const flagged = result.violations.map((v) => `${v.eco}:${v.name}@${v.version}`).sort();
-  assert.deepEqual(flagged, ["actions:actions/checkout@v7.0.1", "npm:fresh-pkg@2.0.0"]);
+  assert.deepEqual(flagged, [
+    "actions:actions/checkout@v7.0.1",
+    "identity:npm-lock:node_modules/old-pkg@1.0.0\u0000https://registry.example/replaced.tgz\u0000sha512-replaced",
+    "npm:fresh-pkg@2.0.0",
+  ]);
   assert.equal(result.warnings.length, 0);
   // 組織内パッケージも既定で照会される
   assert.equal(result.checked, 5);
 
-  // しきい値 0 でエコシステム単位のオフ（照会もされない）
-  const off = await run({ ...base, thresholds: { npm: 0, go: 3, actions: 0 } });
+  // しきい値 0 でエコシステム単位のオフ（identity検査・照会とも無効）
+  const off = await run({ ...base, thresholds: { npm: 0, go: 0, actions: 0 } });
   assert.deepEqual(off.violations, []);
-  assert.equal(off.checked, 1); // go のみ
+  assert.equal(off.checked, 0);
+
+  // 明示excludeはidentity違反にも適用される
+  const excluded = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 0 }, excludePatterns: ["old-pkg"] });
+  assert.deepEqual(excluded.violations.map((v) => `${v.eco}:${v.name}`).sort(), ["npm:fresh-pkg"]);
+
+  // 通常のversion更新はidentity差替えではなく、cooldown照会だけに委ねる
+  const upgraded = await run({
+    ...base,
+    changedFiles: ["package-lock.json"],
+    thresholds: { npm: 7, go: 0, actions: 0 },
+    readFileAt: (sha) => JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/old-pkg": { version: sha === "base" ? "1.0.0" : "2.0.0", resolved: `https://registry.example/old-pkg-${sha}.tgz`, integrity: `sha512-${sha}` } } }),
+  });
+  assert.equal(upgraded.violations.some((v) => v.eco === "identity"), false);
+
 });
 
 test("syncPrComment: create / update / resolve / skip", async () => {

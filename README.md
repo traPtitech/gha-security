@@ -3,7 +3,7 @@
 traPtitech のリポジトリを対象にした、サプライチェーンハードニング用の共通 GitHub Actions 集。
 
 - **pinning**: GitHub Actions の `uses:` を 40 桁 commit SHA に、Docker イメージ参照を `@sha256:` digest に固定する
-- **cooldown**: 公開から日が浅い依存バージョンの混入を防ぐ（bot 経由・手動 bump を問わず）
+- **cooldown**: 公開から日が浅い依存バージョンと、同一versionのnpm artifact identity差し替えを防ぐ（bot 経由・手動 bump を問わず）
 
 ## 提供するもの
 
@@ -13,7 +13,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 |---|---|---|
 | `pin-support.yaml` | PR 内の未固定参照を検出し、**修正を suggestion または直接コミットで返す**（作業の肩代わり） | `pull_request` |
 | `pin-check.yaml` | 未固定参照があれば fail する退行防止 lint（`--verify-comment` でコメント偽装も検出） | `pull_request` |
-| `cooldown-check.yaml` | PR で追加/変更された依存に公開 N 日未満の版があれば fail。違反内容は **sticky な PR コメント**（bot コメント1つを更新）でも通知され、解消すると ✅ に変わる | `pull_request` |
+| `cooldown-check.yaml` | PR で追加/変更された依存に公開 N 日未満の版、または同一versionのnpm artifact identity変更があれば fail。違反内容は **sticky な PR コメント**（bot コメント1つを更新）でも通知され、解消すると ✅ に変わる | `pull_request` |
 | `dependency-policy.yaml` | CI の lockfile 強制と `package.json` の range / dist-tag 指定を fail する | `pull_request` |
 | `pin.yaml` | リポジトリ全体を固定して PR を作成。`update: true` で bot なしリポジトリの追従更新も担う | `schedule` / `workflow_dispatch` |
 
@@ -21,7 +21,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 
 | action | 内容 |
 |---|---|
-| `actions/cooldown-check` | cooldown ゲート本体（Node 製・依存なし）。対象: npm 系 lockfile（package-lock / pnpm-lock / yarn.lock / bun.lock）・package.json 厳密指定・go.mod / go.sum・workflows の `uses:` |
+| `actions/cooldown-check` | cooldown ゲート本体（Node 製・依存なし）。対象: npm 系lockfile（package-lockでは**同一ファイル・同一installation path・同一version**の `resolved` / `integrity` を監視）・package.json 厳密指定・go.mod / go.sum・workflows の `uses:`。lockfileのrename/moveをまたぐidentity相関、alias・local/Git sourceの正規化は対象外 |
 | `actions/dependency-policy` | workflow の可変 install（Node / Cargo / Go）と、`pip install -r` の `--require-hashes` 不足を拒否し、`package.json` の semver range / dist-tag を拒否する |
 | `actions/pin-docker` | Dockerfile `FROM` / compose `image:` の digest 固定。解決は frizbee（単一参照モード）、書き換えは同梱スクリプト |
 | `actions/setup-tools` | pinact / frizbee を checksum 検証付きでインストール（内部用） |
