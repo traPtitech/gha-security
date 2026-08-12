@@ -169,6 +169,7 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   const dates = {
     "npm:fresh-pkg@2.0.0": "2026-07-22T00:00:00Z",   // 2日前 → npm 7日しきい値で違反
     "npm:aged-pkg@3.0.0": "2026-06-01T00:00:00Z",    // 53日前 → OK
+    "npm:@traptitech/own@0.0.1": "2026-06-01T00:00:00Z", // 組織内も既定で照会
     "actions:actions/checkout@v7.0.1": "2026-07-23T00:00:00Z", // 1日前 → 3日しきい値で違反
     "go:github.com/a/b@v1.1.0": "2026-07-01T00:00:00Z", // 23日前 → OK
   };
@@ -181,15 +182,15 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
     changedFiles: Object.keys(files.head),
     readFileAt: (sha, f) => files[sha]?.[f] ?? "",
     baseSha: "base", headSha: "head",
-    excludePatterns: ["@traptitech/*", "traPtitech/*"],
+    excludePatterns: [],
     lookups, now: NOW,
   };
   const result = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 3 } });
   const flagged = result.violations.map((v) => `${v.eco}:${v.name}@${v.version}`).sort();
   assert.deepEqual(flagged, ["actions:actions/checkout@v7.0.1", "npm:fresh-pkg@2.0.0"]);
   assert.equal(result.warnings.length, 0);
-  // 除外された自 org パッケージは照会もされない
-  assert.equal(result.checked, 4);
+  // 組織内パッケージも既定で照会される
+  assert.equal(result.checked, 5);
 
   // しきい値 0 でエコシステム単位のオフ（照会もされない）
   const off = await run({ ...base, thresholds: { npm: 0, go: 3, actions: 0 } });

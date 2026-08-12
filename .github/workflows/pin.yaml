@@ -32,7 +32,7 @@ on:
       image-exclude-regex:
         description: pin-docker が除外するイメージ参照の正規表現
         type: string
-        default: '^ghcr\.io/traptitech/'
+        default: ""
       pr-branch:
         description: 作成する PR のブランチ名
         type: string
@@ -40,7 +40,7 @@ on:
       pinact-exclude-regex:
         description: pinact の対象から除外する action の正規表現
         type: string
-        default: '^traPtitech/'
+        default: ""
     secrets:
       app-id:
         required: false
