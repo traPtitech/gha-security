@@ -1,44 +1,36 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const WORKFLOW_PATH = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+const TRUE_FLAG = (name) => new RegExp(`(?:^|\\s)${name}(?:\\s|$|=true(?:\\s|$))`);
+
+function shellCommands(command) {
+  return command.split(/\s*(?:&&|\|\||[;|])\s*/).map((part) => part.trim()).filter(Boolean);
+}
 
 function commandViolation(file, line, command) {
   if (/\bnpm\s+install\b/.test(command)) {
-    return {
-      file, line, command,
-      reason: "npm install は lockfile を厳密に使用しません。npm ci を使ってください",
-    };
+    return { file, line, command, reason: "npm install は lockfile を厳密に使用しません。npm ci を使ってください" };
   }
-  if (/\bpnpm\s+(?:install|i)\b/.test(command) && !/--frozen-lockfile\b/.test(command)) {
-    return {
-      file, line, command,
-      reason: "pnpm install には --frozen-lockfile が必要です",
-    };
+  if (/\bpnpm\s+(?:install|i)\b/.test(command) && !TRUE_FLAG("--frozen-lockfile").test(command)) {
+    return { file, line, command, reason: "pnpm install には --frozen-lockfile が必要です" };
   }
-  if (/\byarn\s+(?:install|i)\b/.test(command) && !/(?:--immutable|--frozen-lockfile)\b/.test(command)) {
-    return {
-      file, line, command,
-      reason: "yarn install には --immutable または --frozen-lockfile が必要です",
-    };
+  if (/\byarn\s+(?:install|i)\b/.test(command)
+      && !TRUE_FLAG("--immutable").test(command) && !TRUE_FLAG("--frozen-lockfile").test(command)) {
+    return { file, line, command, reason: "yarn install には --immutable または --frozen-lockfile が必要です" };
   }
-  if (/\bbun\s+install\b/.test(command) && !/--frozen-lockfile\b/.test(command)) {
-    return {
-      file, line, command,
-      reason: "bun install には --frozen-lockfile が必要です",
-    };
+  if (/\bbun\s+install\b/.test(command) && !TRUE_FLAG("--frozen-lockfile").test(command)) {
+    return { file, line, command, reason: "bun install には --frozen-lockfile が必要です" };
   }
-  if (/\bcargo\s+(?:build|check|test|run|clippy|doc|bench)\b/.test(command) && !/--locked\b/.test(command)) {
-    return {
-      file, line, command,
-      reason: "Cargo の依存解決を伴うコマンドには --locked が必要です",
-    };
+  if (/(?:\bpython(?:3)?\s+-m\s+)?\bpip\s+install\b/.test(command)
+      && /(?:^|\s)(?:-r|--requirement)(?:\s|=)/.test(command) && !TRUE_FLAG("--require-hashes").test(command)) {
+    return { file, line, command, reason: "pip install -r には --require-hashes が必要です" };
   }
-  if (/\bgo\s+(?:build|test|list|vet|run|generate)\b/.test(command) && !/-mod=readonly\b/.test(command)) {
-    return {
-      file, line, command,
-      reason: "Go の依存解決を伴うコマンドには -mod=readonly が必要です",
-    };
+  if (/\bcargo\s+(?:build|check|test|run|clippy|doc|bench)\b/.test(command) && !TRUE_FLAG("--locked").test(command)) {
+    return { file, line, command, reason: "Cargo の依存解決を伴うコマンドには --locked が必要です" };
+  }
+  if (/\bgo\s+(?:build|test|list|vet|run|generate)\b/.test(command) && !/(?:^|\s)-mod=readonly(?:\s|$)/.test(command)) {
+    return { file, line, command, reason: "Go の依存解決を伴うコマンドには -mod=readonly が必要です" };
   }
   return null;
 }
@@ -69,16 +61,39 @@ export function findPackageJsonPinningViolations(files) {
   return violations;
 }
 
+function indentation(raw) {
+  return raw.length - raw.trimStart().length;
+}
+
 /** Return CI commands that can update or ignore the committed lockfile. */
 export function findWorkflowLockfileViolations(files) {
   const violations = [];
   for (const [file, text] of Object.entries(files)) {
     if (!WORKFLOW_PATH.test(file)) continue;
+    let blockIndent = null;
     for (const [index, raw] of text.split("\n").entries()) {
-      const line = raw.replace(/\s+#.*$/, "").trim();
-      if (!line || line.startsWith("#")) continue;
-      const violation = commandViolation(file, index + 1, line.replace(/^[-\s]*run:\s*/, ""));
-      if (violation) violations.push(violation);
+      const trimmed = raw.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const indent = indentation(raw);
+      let command = null;
+      if (blockIndent !== null) {
+        if (indent > blockIndent) command = trimmed.replace(/\s+#.*$/, "").trim();
+        else blockIndent = null;
+      }
+      if (command === null) {
+        const run = raw.match(/^\s*-?\s*run:\s*(.*)$/);
+        if (!run) continue;
+        if (/^[>|](?:[+-]?[1-9]?|[1-9]?[+-]?)\s*(?:#.*)?$/.test(run[1])) {
+          blockIndent = indent;
+          continue;
+        }
+        command = run[1].replace(/\s+#.*$/, "").trim();
+      }
+      if (!command) continue;
+      for (const shellCommand of shellCommands(command)) {
+        const violation = commandViolation(file, index + 1, shellCommand);
+        if (violation) violations.push(violation);
+      }
     }
   }
   return violations;
@@ -89,7 +104,9 @@ function walk(root, current = root) {
   for (const name of readdirSync(current)) {
     if ([".git", "node_modules", "vendor", ".venv"].includes(name)) continue;
     const path = join(current, name);
-    if (statSync(path).isDirectory()) Object.assign(out, walk(root, path));
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) continue;
+    if (stat.isDirectory()) Object.assign(out, walk(root, path));
     else out[relative(root, path).replaceAll("\\", "/")] = readFileSync(path, "utf8");
   }
   return out;

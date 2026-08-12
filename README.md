@@ -16,7 +16,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 | `pin-support.yaml` | PR 内の未固定参照を検出し、**修正を suggestion または直接コミットで返す**（作業の肩代わり） | `pull_request` |
 | `pin-check.yaml` | 未固定参照があれば fail する退行防止 lint（`--verify-comment` でコメント偽装も検出） | `pull_request` |
 | `cooldown-check.yaml` | PR で追加/変更された依存に公開 N 日未満の版があれば fail。違反内容は **sticky な PR コメント**（bot コメント1つを更新）でも通知され、解消すると ✅ に変わる | `pull_request` |
-| `dependency-policy.yaml` | CI の lockfile 強制と `package.json` の range / dist-tag 指定を fail する | `pull_request` |
+| `dependency-policy.yaml` | CI の lockfile 強制と `package.json` の range / dist-tag 指定を fail する | `workflow_call` |
 | `pin.yaml` | リポジトリ全体を固定して PR を作成。`update: true` で bot なしリポジトリの追従更新も担う | `schedule` / `workflow_dispatch` |
 
 ### Composite actions（`actions/`）
@@ -24,7 +24,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 | action | 内容 |
 |---|---|
 | `actions/cooldown-check` | cooldown ゲート本体（Node 製・依存なし）。対象: npm 系 lockfile（package-lock / pnpm-lock / yarn.lock / bun.lock）・package.json 厳密指定・go.mod / go.sum・workflows の `uses:` |
-| `actions/dependency-policy` | workflow の `npm install` 等の可変 install を拒否し、`package.json` の semver range / dist-tag を拒否する |
+| `actions/dependency-policy` | workflow の可変 install（Node / Cargo / Go）と、`pip install -r` の `--require-hashes` 不足を拒否し、`package.json` の semver range / dist-tag を拒否する |
 | `actions/pin-docker` | Dockerfile `FROM` / compose `image:` の digest 固定。解決は frizbee（単一参照モード）、書き換えは同梱スクリプト |
 | `actions/setup-tools` | pinact / frizbee を checksum 検証付きでインストール（内部用） |
 
