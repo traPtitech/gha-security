@@ -27,9 +27,7 @@ on:
       exclude:
         description: 除外パターン（改行区切り glob）
         type: string
-        default: |
-          @traptitech/*
-          traPtitech/*
+        default: ""
       override-label:
         description: このラベルが付いた PR はチェックをスキップ
         type: string

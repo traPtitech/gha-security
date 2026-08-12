@@ -50,7 +50,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 | PR ゲート | `cooldown-check`（このリポジトリ） | すべての PR |
 | bot | Dependabot cooldown（2026-07 からデフォルト3日）/ Renovate `minimumReleaseAge` | bot の更新 PR |
 
-しきい値の標準: **npm 7日 / その他 3日**。自 org 産（`@traptitech/*`, `traPtitech/*`）はデフォルト除外。
+しきい値の標準: **npm 7日 / その他 3日**。組織内依存も既定で検査対象であり、例外は caller の `exclude` / `*-exclude-regex` に明示する。
 緊急のセキュリティ修正は PR に **`cooldown-override` ラベル**を付けるとスキップできる（Dependabot のセキュリティアップデートはもともと cooldown 対象外）。
 
 ## 機能のオン/オフ

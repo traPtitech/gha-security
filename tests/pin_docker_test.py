@@ -70,7 +70,6 @@ def main():
 
     common = [
         "--file-exclude-regex", r"(^|/)(docker-)?compose[^/]*\.(dev|local|override)[^/]*\.ya?ml$",
-        "--image-exclude-regex", r"^ghcr\.io/traptitech/",
     ]
 
     # --- check モード ---
@@ -79,9 +78,9 @@ def main():
         make_fixtures(root)
         r = run(root, "--check", *common)
         check(r.returncode == 1, "check: unpinned で exit 1")
-        for ref in ["golang:1.22-alpine", "alpine:3.19", "composer:latest", "nginx:1.25-alpine"]:
+        for ref in ["golang:1.22-alpine", "alpine:3.19", "composer:latest", "nginx:1.25-alpine", "ghcr.io/traptitech/traq:latest"]:
             check(ref in r.stdout, f"check: {ref} を検出")
-        for ref in ["scratch", "ghcr.io/traptitech/traq", "mariadb:10.6", "redis:7@sha256", "${REGISTRY}/alpine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]:
+        for ref in ["scratch", "mariadb:10.6", "redis:7@sha256", "${REGISTRY}/alpine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "myapp:latest"]:
             check(ref not in r.stdout, f"check: {ref} は検出しない")
         for ref in ["${IMG}", "${BASE_IMAGE}", "alpine@sha256:${DIGEST}"]:
             check(ref in r.stdout, f"check: {ref} を未検証として検出")
@@ -103,7 +102,7 @@ def main():
         check("FROM ${BASE_IMAGE}" in dockerfile, "fix: Dockerfile 変数参照は未解決のまま")
         check(f"nginx:1.25-alpine@{STUB_DIGEST}" in compose, "fix: compose の image を固定")
         check("image: myapp:latest\n" in compose, "fix: build 併記サービスは無変更")
-        check("image: ghcr.io/traptitech/traq:latest\n" in compose, "fix: 除外イメージは無変更")
+        check(f"image: ghcr.io/traptitech/traq:latest@{STUB_DIGEST}\n" in compose, "fix: org image も固定")
         check((root / "compose.dev.yaml").read_text() == COMPOSE_DEV, "fix: 除外ファイルは無変更")
 
     if failures:

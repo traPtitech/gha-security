@@ -18,7 +18,7 @@ on:
       pinact-exclude-regex:
         description: pinact の検査から除外する action の正規表現（同 org の再利用ワークフロー参照など）
         type: string
-        default: '^traPtitech/'
+        default: ""
       file-exclude-regex:
         description: docker 検査で除外するファイルパスの正規表現
         type: string
@@ -26,7 +26,7 @@ on:
       image-exclude-regex:
         description: docker 検査で除外するイメージ参照の正規表現
         type: string
-        default: '^ghcr\.io/traptitech/'
+        default: ""
 
 jobs:
   pin-check:

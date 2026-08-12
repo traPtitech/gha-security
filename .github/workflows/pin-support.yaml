@@ -27,11 +27,11 @@ on:
       image-exclude-regex:
         description: pin-docker が除外するイメージ参照の正規表現
         type: string
-        default: '^ghcr\.io/traptitech/'
+        default: ""
       pinact-exclude-regex:
         description: pinact の修正対象から除外する action の正規表現
         type: string
-        default: '^traPtitech/'
+        default: ""
 
 jobs:
   pin-support:

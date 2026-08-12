@@ -16,9 +16,7 @@ inputs:
     default: "3"
   exclude:
     description: 除外パターン（改行区切りの glob。npm 名 / Go module / owner/repo に対して評価）
-    default: |
-      @traptitech/*
-      traPtitech/*
+    default: ""
   override-label:
     description: この PR ラベルが付いていたらチェックをスキップする（緊急用）
     default: cooldown-override
