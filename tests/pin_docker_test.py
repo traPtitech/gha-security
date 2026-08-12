@@ -126,6 +126,12 @@ def main():
         check(not calls.exists(), "registry policy: denied registry causes no resolver egress")
         check("許可されていないレジストリ" in r.stdout, "registry policy: denial is reported")
 
+        private.write_text("FROM INTERNAL/team/app:latest\n")
+        r = run(root, "--frizbee", str(stub), "--files", str(private))
+        check(r.returncode == 1, "registry policy: uppercase private host fails fix mode")
+        check(not calls.exists(), "registry policy: uppercase private host causes no resolver egress")
+
+        private.write_text(PRIVATE_DOCKERFILE)
         r = run(
             root, "--frizbee", str(stub), "--allowed-registries", "registry.internal.example",
             "--files", str(private),

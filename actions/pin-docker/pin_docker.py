@@ -120,8 +120,15 @@ def compose_refs(lines: list[str]):
 
 def registry_for(ref: str) -> str:
     """Return the registry host, applying Docker's implicit Docker Hub default."""
-    first = ref.split("/", 1)[0].lower()
-    if "/" not in ref or ("." not in first and ":" not in first and first != "localhost"):
+    raw_first = ref.split("/", 1)[0]
+    first = raw_first.lower()
+    # Docker treats a first component with uppercase letters as a registry host.
+    # Decide host-ness before case normalization used for allowlist matching.
+    is_registry = (
+        "/" in ref
+        and ("." in raw_first or ":" in raw_first or raw_first == "localhost" or any(c.isupper() for c in raw_first))
+    )
+    if not is_registry:
         return "docker.io"
     return "docker.io" if first == "index.docker.io" else first
 
