@@ -46,6 +46,10 @@ services:
     image: mariadb:10.6
 """
 
+PRIVATE_DOCKERFILE = """\
+FROM registry.internal.example/team/app:latest
+"""
+
 
 def make_fixtures(root: Path):
     (root / "Dockerfile").write_text(DOCKERFILE)
@@ -104,6 +108,53 @@ def main():
         check("image: myapp:latest\n" in compose, "fix: build 併記サービスは無変更")
         check(f"image: ghcr.io/traptitech/traq:latest@{STUB_DIGEST}\n" in compose, "fix: org image も固定")
         check((root / "compose.dev.yaml").read_text() == COMPOSE_DEV, "fix: 除外ファイルは無変更")
+
+    # --- fix モード: registry egress policy ---
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        private = root / "Dockerfile.private"
+        private.write_text(PRIVATE_DOCKERFILE)
+        calls = root / "calls"
+        stub = root / "frizbee-stub"
+        stub.write_text(
+            f'#!/bin/sh\necho "$2" >> "{calls}"\necho "$2@{STUB_DIGEST}"\n'
+        )
+        stub.chmod(0o755)
+        r = run(root, "--frizbee", str(stub), "--files", str(private))
+        check(r.returncode == 1, "registry policy: denied image fails fix mode")
+        check(private.read_text() == PRIVATE_DOCKERFILE, "registry policy: private registry is not resolved by default")
+        check(not calls.exists(), "registry policy: denied registry causes no resolver egress")
+        check("許可されていないレジストリ" in r.stdout, "registry policy: denial is reported")
+
+        r = run(
+            root, "--frizbee", str(stub), "--allowed-registries", "registry.internal.example",
+            "--files", str(private),
+        )
+        check(r.returncode == 0, "registry policy: explicit registry allow succeeds")
+        check(f"registry.internal.example/team/app:latest@{STUB_DIGEST}" in private.read_text(),
+              "registry policy: explicitly allowed registry is pinned")
+        check(calls.read_text().strip() == "registry.internal.example/team/app:latest",
+              "registry policy: only explicitly allowed image is resolved")
+
+    # --- fix モード: resolver work is bounded ---
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        dockerfile = root / "Dockerfile"
+        dockerfile.write_text("FROM alpine:3.19\nFROM busybox:1.36\n")
+        calls = root / "calls"
+        stub = root / "frizbee-stub"
+        stub.write_text(
+            f'#!/bin/sh\necho "$2" >> "{calls}"\necho "$2@{STUB_DIGEST}"\n'
+        )
+        stub.chmod(0o755)
+        r = run(root, "--frizbee", str(stub), "--max-resolutions", "1")
+        check(r.returncode == 1, "resolution limit: unresolved image fails fix mode")
+        check(len(calls.read_text().splitlines()) == 1, "resolution limit: invokes resolver at most once")
+        check("上限" in r.stdout, "resolution limit: skipped images are reported")
+        check("--max-resolutions must be at least 1" in run(root, "--max-resolutions", "0").stderr,
+              "resolution limit: zero is rejected")
+        check("--resolution-timeout must be at least 1" in run(root, "--resolution-timeout", "0").stderr,
+              "resolution timeout: zero is rejected")
 
     if failures:
         print(f"\n{len(failures)} failure(s)")

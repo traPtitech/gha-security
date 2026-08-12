@@ -72,6 +72,7 @@ traPtitech のリポジトリを対象にした、サプライチェーンハー
 - **PR のコードは実行しない**: pin-support はファイルの静的書き換えのみ。`pull_request_target` は使わない
 - **公開日時はレジストリ側の記録のみを信頼**: npm registry `time` / Go proxy `.info` / GitHub Releases `published_at`。コミット日時・タグ日時は作者が偽装できるため使わない（確認できない場合は fail ではなく warn）
 - **ツールは checksum 検証付きで導入**: pinact / frizbee のバージョンと SHA256 は `actions/setup-tools` にコミットされ、更新は PR レビューを通る
+- **Docker registry egress は制限する**: `pin-docker` の fix モードは既定で `docker.io`、`ghcr.io`、`quay.io` のみを解決する。private registry を使う場合は caller で `allowed-registries: docker.io,ghcr.io,quay.io,registry.example.com` のように明示する。1 実行当たりの異なる解決は既定で 50 件、各解決は 15 秒までであり、必要に応じて `max-resolutions` / `resolution-timeout` をより小さくできる。check モードは従来どおりネットワークを使わない。
 - **維持更新は bot に任せる**: `pin.yaml` の `update: true` は Dependabot / Renovate 非導入リポジトリ専用（併用すると bump PR が競合する）
 
 ## 既知の制限（v1）

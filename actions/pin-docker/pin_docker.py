@@ -30,6 +30,7 @@ COPY_FROM_RE = re.compile(r"^\s*COPY\s+(?:.*\s)?--from=([^\s]+)", re.IGNORECASE)
 IMAGE_RE = re.compile(r"""^(\s*(?:-\s+)?)image:\s*(['"]?)([^\s'"#]+)\2""")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 SKIP_DIRS = {".git", "node_modules", "vendor", ".venv"}
+DEFAULT_ALLOWED_REGISTRIES = ("docker.io", "ghcr.io", "quay.io")
 
 
 def discover(root: Path):
@@ -117,19 +118,33 @@ def compose_refs(lines: list[str]):
     return out
 
 
+def registry_for(ref: str) -> str:
+    """Return the registry host, applying Docker's implicit Docker Hub default."""
+    first = ref.split("/", 1)[0].lower()
+    if "/" not in ref or ("." not in first and ":" not in first and first != "localhost"):
+        return "docker.io"
+    return "docker.io" if first == "index.docker.io" else first
+
+
 class Resolver:
-    def __init__(self, frizbee: str):
+    def __init__(self, frizbee: str, timeout: int, max_resolutions: int):
         self.frizbee = frizbee
+        self.timeout = timeout
+        self.max_resolutions = max_resolutions
+        self.resolutions = 0
         self.cache: dict[str, str | None] = {}
 
-    def digest(self, ref: str) -> str | None:
+    def digest(self, ref: str) -> tuple[str | None, str | None]:
         if ref in self.cache:
-            return self.cache[ref]
+            return self.cache[ref], None
+        if self.resolutions >= self.max_resolutions:
+            return None, "解決数の上限"
+        self.resolutions += 1
         digest = None
         try:
             proc = subprocess.run(
                 [self.frizbee, "image", ref],
-                capture_output=True, text=True, timeout=60, check=False,
+                capture_output=True, text=True, timeout=self.timeout, check=False,
             )
             if proc.returncode == 0:
                 candidate = proc.stdout.strip().rsplit("@", 1)
@@ -138,7 +153,7 @@ class Resolver:
         except (OSError, subprocess.TimeoutExpired):
             pass
         self.cache[ref] = digest
-        return digest
+        return digest, None
 
 
 def main() -> int:
@@ -148,7 +163,17 @@ def main() -> int:
     ap.add_argument("--file-exclude-regex", default="", help="除外するファイルパスの正規表現")
     ap.add_argument("--image-exclude-regex", default="", help="除外するイメージ参照の正規表現")
     ap.add_argument("--frizbee", default="frizbee", help="frizbee バイナリのパス")
+    ap.add_argument("--allowed-registries", default=",".join(DEFAULT_ALLOWED_REGISTRIES),
+                    help="fix モードで解決を許可するレジストリ（カンマ区切り）")
+    ap.add_argument("--max-resolutions", type=int, default=50,
+                    help="fix モードで行う異なるイメージ解決の最大数（既定: 50）")
+    ap.add_argument("--resolution-timeout", type=int, default=15,
+                    help="frizbee の各イメージ解決のタイムアウト秒数（既定: 15）")
     args = ap.parse_args()
+    if args.max_resolutions < 1:
+        ap.error("--max-resolutions must be at least 1")
+    if args.resolution_timeout < 1:
+        ap.error("--resolution-timeout must be at least 1")
 
     file_exclude = re.compile(args.file_exclude_regex) if args.file_exclude_regex else None
     image_exclude = re.compile(args.image_exclude_regex) if args.image_exclude_regex else None
@@ -161,10 +186,12 @@ def main() -> int:
     if file_exclude:
         targets = [t for t in targets if not file_exclude.search(str(t))]
 
-    resolver = Resolver(args.frizbee)
+    allowed_registries = {registry.strip().lower() for registry in args.allowed_registries.split(",") if registry.strip()}
+    resolver = Resolver(args.frizbee, args.resolution_timeout, args.max_resolutions)
     unpinned: list[tuple[Path, str]] = []
     fixed: list[tuple[Path, str, str]] = []
     failed: list[tuple[Path, str]] = []
+    blocked: list[tuple[Path, str, str]] = []
 
     for path in targets:
         lines = path.read_text(errors="replace").splitlines(keepends=True)
@@ -180,7 +207,14 @@ def main() -> int:
             if "$" in ref:
                 failed.append((path, ref))
                 continue
-            digest = resolver.digest(ref)
+            registry = registry_for(ref)
+            if registry not in allowed_registries:
+                blocked.append((path, ref, f"許可されていないレジストリ ({registry})"))
+                continue
+            digest, reason = resolver.digest(ref)
+            if reason:
+                blocked.append((path, ref, reason))
+                continue
             if digest is None:
                 failed.append((path, ref))
                 continue
@@ -198,9 +232,10 @@ def main() -> int:
         else:
             summary.append("pin-docker: すべてのイメージ参照が digest 固定されています ✅")
     else:
-        summary.append(f"pin-docker: {len(fixed)} 件を digest 固定、{len(failed)} 件は解決失敗")
+        summary.append(f"pin-docker: {len(fixed)} 件を digest 固定、{len(failed)} 件は解決失敗、{len(blocked)} 件はポリシーにより未解決")
         summary.extend(f"- `{p}`: `{r}` → `@{d[:19]}...`" for p, r, d in fixed)
         summary.extend(f"- ⚠️ 解決失敗: `{p}`: `{r}`" for p, r in failed)
+        summary.extend(f"- ⚠️ {reason}: `{p}`: `{r}`" for p, r, reason in blocked)
 
     print("\n".join(summary))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
@@ -209,7 +244,7 @@ def main() -> int:
 
     if args.check and unpinned:
         return 1
-    if not args.check and failed:
+    if not args.check and (failed or blocked):
         return 1
     return 0
 
