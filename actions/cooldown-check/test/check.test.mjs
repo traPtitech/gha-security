@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePackageLock, parsePnpmLock, parseYarnLock, parseBunLock,
-  parsePackageJsonExact, parseGoMod, parseGoSum, parseWorkflowUses,
-  diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
+  parsePackageJsonExact, parseGoMod, parseGoSum, parseGoReplaces, parseWorkflowUses,
+  parsePackageLockArtifacts, diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
 } from "../src/check.mjs";
 
 const get = (map, name) => [...(map.get(name) ?? [])];
@@ -34,6 +34,13 @@ test("parsePackageLock v1", () => {
   }));
   assert.deepEqual(get(map, "lodash"), ["4.17.21"]);
   assert.deepEqual(get(map, "nested"), ["1.0.0"]);
+});
+
+test("parsePackageLockArtifacts includes resolved and integrity", () => {
+  const artifacts = parsePackageLockArtifacts(JSON.stringify({ lockfileVersion: 3, packages: {
+    "node_modules/pkg": { version: "1.2.3", resolved: "https://registry.example/pkg.tgz", integrity: "sha512-good" },
+  } }));
+  assert.equal(artifacts.get("pkg"), "1.2.3\u0000https://registry.example/pkg.tgz\u0000sha512-good");
 });
 
 test("parsePnpmLock v9/v6/v5 keys", () => {
@@ -109,6 +116,17 @@ test("parseGoMod block and single require", () => {
   assert.equal(map.has("github.com/x/y"), false);
 });
 
+test("parseGoReplaces records single and block replacements", () => {
+  const replaces = parseGoReplaces([
+    "replace example.com/a v1.0.0 => example.com/fork v1.0.0",
+    "replace (",
+    "  example.com/b => ../local-b",
+    ")",
+  ].join("\n"));
+  assert.equal(replaces.get("example.com/a@v1.0.0"), "example.com/fork@v1.0.0");
+  assert.equal(replaces.get("example.com/b@"), "../local-b@");
+});
+
 test("parseGoSum strips /go.mod suffix", () => {
   const map = parseGoSum([
     "github.com/a/b v1.2.3 h1:hash=",
@@ -150,20 +168,20 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   const files = {
     base: {
       "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {
-        "node_modules/old-pkg": { version: "1.0.0" },
+        "node_modules/old-pkg": { version: "1.0.0", resolved: "https://registry.example/old.tgz", integrity: "sha512-old" },
       } }),
       ".github/workflows/ci.yaml": "      - uses: actions/checkout@v6\n",
       "go.mod": "require github.com/a/b v1.0.0\n",
     },
     head: {
       "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {
-        "node_modules/old-pkg": { version: "1.0.0" },
+        "node_modules/old-pkg": { version: "1.0.0", resolved: "https://registry.example/replaced.tgz", integrity: "sha512-replaced" },
         "node_modules/fresh-pkg": { version: "2.0.0" },
         "node_modules/aged-pkg": { version: "3.0.0" },
         "node_modules/@traptitech/own": { version: "0.0.1" },
       } }),
       ".github/workflows/ci.yaml": "      - uses: actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v7.0.1\n",
-      "go.mod": "require github.com/a/b v1.1.0\n",
+      "go.mod": "require github.com/a/b v1.1.0\nreplace github.com/a/b v1.1.0 => example.com/fork v1.1.0\n",
     },
   };
   const dates = {
@@ -187,14 +205,22 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   };
   const result = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 3 } });
   const flagged = result.violations.map((v) => `${v.eco}:${v.name}@${v.version}`).sort();
-  assert.deepEqual(flagged, ["actions:actions/checkout@v7.0.1", "npm:fresh-pkg@2.0.0"]);
+  assert.deepEqual(flagged, [
+    "actions:actions/checkout@v7.0.1",
+    "identity:go-replace:github.com/a/b@v1.1.0@example.com/fork@v1.1.0",
+    "identity:npm-lock:old-pkg@1.0.0\u0000https://registry.example/replaced.tgz\u0000sha512-replaced",
+    "npm:fresh-pkg@2.0.0",
+  ]);
   assert.equal(result.warnings.length, 0);
   // 組織内パッケージも既定で照会される
   assert.equal(result.checked, 5);
 
-  // しきい値 0 でエコシステム単位のオフ（照会もされない）
+  // しきい値 0 でも、同一versionのartifact/source差し替えは常に拒否する
   const off = await run({ ...base, thresholds: { npm: 0, go: 3, actions: 0 } });
-  assert.deepEqual(off.violations, []);
+  assert.deepEqual(off.violations.map((v) => v.name).sort(), [
+    "go-replace:github.com/a/b@v1.1.0",
+    "npm-lock:old-pkg",
+  ]);
   assert.equal(off.checked, 1); // go のみ
 });
 
