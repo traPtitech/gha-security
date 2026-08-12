@@ -51,10 +51,11 @@ def needs_pin(ref: str, stages: set[str]) -> bool:
     low = ref.lower()
     if low == "scratch" or low in stages or ref.isdigit():
         return False
-    # 変数を含む参照は、見かけ上 @sha256: があっても実体を固定できない。
-    if "$" in ref:
-        return True
-    return "@sha256:" not in ref
+    # image名やtagが変数でも、digest suffixがリテラルならcontent identityは固定される。
+    if re.search(r"@sha256:[0-9a-f]{64}$", ref, re.IGNORECASE):
+        return False
+    # digest部を含む変数参照は、見かけ上 @sha256: があっても実体を固定できない。
+    return True
 
 
 def dockerfile_refs(lines: list[str]):
