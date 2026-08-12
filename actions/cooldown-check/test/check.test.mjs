@@ -225,6 +225,25 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
 
 });
 
+test("run(): fails closed on unverified lookups unless explicitly opted out", async () => {
+  const files = {
+    base: { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {} }) },
+    head: { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/pkg": { version: "1.0.0" } } }) },
+  };
+  const ctx = {
+    changedFiles: ["package-lock.json"], readFileAt: (sha, file) => files[sha][file],
+    baseSha: "base", headSha: "head", thresholds: { npm: 7, go: 0, actions: 0 },
+    excludePatterns: [], now: Date.now(),
+    lookups: { npm: async () => ({ warn: "registry unavailable" }) },
+  };
+  const closed = await run(ctx);
+  assert.equal(closed.unverified.length, 1);
+  assert.equal(closed.violations.length, 1);
+  const open = await run({ ...ctx, failOnUnverified: false });
+  assert.equal(open.unverified.length, 1);
+  assert.equal(open.violations.length, 0);
+});
+
 test("syncPrComment: create / update / resolve / skip", async () => {
   const mk = (listBody) => {
     const calls = [];

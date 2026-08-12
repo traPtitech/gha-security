@@ -36,6 +36,10 @@ on:
         description: 違反内容を PR コメント（sticky）として投稿するか
         type: boolean
         default: true
+      fail-on-unverified:
+        description: レジストリ/API照会不能を未検証としてfailにするか
+        type: boolean
+        default: true
 
 jobs:
   cooldown-check:
@@ -55,3 +59,4 @@ jobs:
           exclude: ${{ inputs.exclude }}
           override-label: ${{ inputs.override-label }}
           pr-comment: ${{ inputs.pr-comment }}
+          fail-on-unverified: ${{ inputs.fail-on-unverified }}

@@ -243,12 +243,14 @@ const NPM_LOCKFILES = new Map([
 
 export async function run(ctx) {
   // thresholds: { npm, go, actions } — 0 以下でそのエコシステムのチェックを無効化
+  // failOnUnverified: boolean（既定 true）
   const { changedFiles, readFileAt, baseSha, headSha, thresholds,
-          excludePatterns, lookups, now } = ctx;
+          excludePatterns, lookups, now, failOnUnverified = true } = ctx;
   const excludes = excludePatterns.map(globToRegExp);
   const violations = [];
   const warnings = [];
   const identityViolations = [];
+  const unverified = [];
   const targets = []; // {eco, name, version, file, threshold}
 
   const collectIdentityChanges = (file, parser, label, { flagNew = false, detectRemoved = false } = {}) => {
@@ -325,13 +327,22 @@ export async function run(ctx) {
     if (t.eco === "npm") result = await lookups.npm(t.name, t.version);
     else if (t.eco === "go") result = await lookups.go(t.name, t.version);
     else result = await lookups.action(...t.name.split("/"), t.version);
-    if (result.warn) { warnings.push(`${t.file}: ${result.warn}`); continue; }
+    if (result.warn) {
+      warnings.push(`${t.file}: ${result.warn}`);
+      unverified.push({ ...t, reason: result.warn });
+      continue;
+    }
     const ageDays = (now - result.date.getTime()) / DAY_MS;
     if (ageDays < t.threshold) {
       violations.push({ ...t, published: result.date.toISOString(), ageDays });
     }
   }
-  return { violations: [...identityViolations, ...violations], warnings, checked: seen.size };
+  return {
+    violations: [...identityViolations, ...violations, ...(failOnUnverified ? unverified : [])],
+    warnings,
+    unverified,
+    checked: seen.size,
+  };
 }
 
 // ---------- PR sticky comment ----------
@@ -397,15 +408,21 @@ async function main() {
     excludePatterns: (process.env.EXCLUDE_PATTERNS ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
     lookups: makeLookups(globalThis.fetch, process.env.GITHUB_TOKEN, process.env.GITHUB_API_URL),
     now: Date.now(),
+    failOnUnverified: (process.env.FAIL_ON_UNVERIFIED ?? "true") === "true",
   });
 
   const lines = [];
   if (result.violations.length > 0) {
     const identity = result.violations.filter((v) => v.eco === "identity");
-    const cooldown = result.violations.filter((v) => v.eco !== "identity");
+    const unverified = result.violations.filter((v) => v.reason && v.eco !== "identity");
+    const cooldown = result.violations.filter((v) => v.eco !== "identity" && !v.reason);
     if (identity.length > 0) {
       lines.push(`### ❄️ cooldown-check: 依存のartifact/source identity変更が ${identity.length} 件見つかりました`, "");
       lines.push(...identity.map((v) => `- \`${v.file}\`: \`${v.name}\`（${v.reason}）`));
+    }
+    if (unverified.length > 0) {
+      lines.push(`### ❄️ cooldown-check: 公開日時を確認できない依存が ${unverified.length} 件あります`, "");
+      lines.push(...unverified.map((v) => `- \`${v.file}\`: \`${v.name}@${v.version}\`（${v.reason}）`));
     }
     if (cooldown.length > 0) {
       lines.push(`### ❄️ cooldown-check: 公開から日が浅いバージョンが ${cooldown.length} 件見つかりました`);
@@ -414,13 +431,16 @@ async function main() {
         lines.push(`| ${v.eco} | \`${v.name}\` | \`${v.version}\` | ${v.published.slice(0, 10)} | ${v.ageDays.toFixed(1)}日 | ${v.threshold}日 | \`${v.file}\` |`);
       }
     }
-    lines.push("", "公開直後のバージョンまたは依存source identityの変更を確認してください。",
+    lines.push("", "公開直後のバージョン、依存source identityの変更、または公開日時を確認できない依存を確認してください。",
       "緊急の場合は PR に override ラベルを付けてください。");
   } else {
     lines.push(`cooldown-check: 追加/変更された依存 ${result.checked} 件はすべて cooldown を満たしています ✅`);
   }
   if (result.warnings.length > 0) {
-    lines.push("", "<details><summary>⚠️ 確認できなかったもの（fail にはしません）</summary>", "");
+    const note = (process.env.FAIL_ON_UNVERIFIED ?? "true") === "true"
+      ? "⚠️ 確認できなかったもの（fail-closed）"
+      : "⚠️ 確認できなかったもの（fail-on-unverified: false のため warn）";
+    lines.push("", `<details><summary>${note}</summary>`, "");
     lines.push(...result.warnings.map((w) => `- ${w}`));
     lines.push("", "</details>");
   }

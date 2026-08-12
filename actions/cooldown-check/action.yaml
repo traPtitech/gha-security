@@ -23,6 +23,9 @@ inputs:
   pr-comment:
     description: 違反内容を PR コメント（sticky）として投稿するか。要 pull-requests write 権限
     default: "true"
+  fail-on-unverified:
+    description: レジストリ/API照会不能を未検証としてfailにするか
+    default: "true"
   github-token:
     description: GitHub API 用トークン（Actions のリリース日時照会に使用）
     default: ${{ github.token }}
@@ -55,5 +58,6 @@ runs:
         EXCLUDE_PATTERNS: ${{ inputs.exclude }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_COMMENT: ${{ inputs.pr-comment }}
+        FAIL_ON_UNVERIFIED: ${{ inputs.fail-on-unverified }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: node "${GITHUB_ACTION_PATH}/src/check.mjs"
