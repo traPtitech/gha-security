@@ -45,7 +45,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: ${{ inputs.mode == 'commit' }}
+          persist-credentials: ${{ env.EFFECTIVE_MODE == 'commit' }}
 
       - uses: traPtitech/gha-security/actions/setup-tools@5f05a83ab824f4327126c102c0b1be10017e2758
 
