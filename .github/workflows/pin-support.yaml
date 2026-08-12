@@ -77,7 +77,7 @@ jobs:
 
       - name: Pin docker images in changed files
         if: inputs.pin-docker && steps.docker-files.outputs.files != ''
-        uses: traPtitech/gha-security/actions/pin-docker@5f05a83ab824f4327126c102c0b1be10017e2758
+        uses: traPtitech/gha-security/actions/pin-docker@4fbeaa6c8609737cc6f739f0d05765f8dffaf757
         with:
           mode: fix
           files: ${{ steps.docker-files.outputs.files }}
