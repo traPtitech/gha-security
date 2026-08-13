@@ -1,8 +1,14 @@
 name: dependency-policy
 description: Checks CI lockfile enforcement and package.json dependency pinning.
+inputs:
+  require-lockfile:
+    description: package.json と同じディレクトリにlockfileを必須にするか（library等はfalseで明示除外）
+    default: "true"
 runs:
   using: composite
   steps:
     - name: Check dependency policy
       shell: bash
+      env:
+        REQUIRE_LOCKFILE: ${{ inputs.require-lockfile }}
       run: node "${GITHUB_ACTION_PATH}/src/check.mjs"

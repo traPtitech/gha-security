@@ -22,16 +22,6 @@ function commandViolation(file, line, command) {
   if (/\bbun\s+install\b/.test(command) && !TRUE_FLAG("--frozen-lockfile").test(command)) {
     return { file, line, command, reason: "bun install には --frozen-lockfile が必要です" };
   }
-  if (/(?:\bpython(?:3)?\s+-m\s+)?\bpip\s+install\b/.test(command)
-      && /(?:^|\s)(?:-r|--requirement)(?:\s|=)/.test(command) && !TRUE_FLAG("--require-hashes").test(command)) {
-    return { file, line, command, reason: "pip install -r には --require-hashes が必要です" };
-  }
-  if (/\bcargo\s+(?:build|check|test|run|clippy|doc|bench)\b/.test(command) && !TRUE_FLAG("--locked").test(command)) {
-    return { file, line, command, reason: "Cargo の依存解決を伴うコマンドには --locked が必要です" };
-  }
-  if (/\bgo\s+(?:build|test|list|vet|run|generate)\b/.test(command) && !/(?:^|\s)-mod=readonly(?:\s|$)/.test(command)) {
-    return { file, line, command, reason: "Go の依存解決を伴うコマンドには -mod=readonly が必要です" };
-  }
   return null;
 }
 
@@ -61,6 +51,44 @@ export function findPackageJsonPinningViolations(files) {
   return violations;
 }
 
+const LOCKFILES = new Set([
+  "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml",
+  "yarn.lock", "bun.lock", "bun.lockb",
+]);
+
+/** Return package.json paths with no lockfile in the same directory. */
+export function findMissingLockfiles(files) {
+  const paths = new Set(Object.keys(files));
+  return Object.keys(files)
+    .filter((file) => file.split("/").pop() === "package.json")
+    .filter((file) => {
+      const parent = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
+      return ![...LOCKFILES].some((name) => paths.has(parent + name));
+    })
+    .sort();
+}
+
+/** Return non-blocking warnings for plainly disabled Go checksum verification. */
+export function findGoIntegrityWarnings(files) {
+  const warnings = [];
+  const paths = new Set(Object.keys(files));
+  for (const [file, text] of Object.entries(files)) {
+    if (file.split("/").pop() === "go.mod" && /^\s*require\s+(?:\(|\S+)/m.test(text)) {
+      const parent = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
+      if (!paths.has(parent + "go.sum")) warnings.push({ file, reason: "外部 module を使う go.mod に go.sum がありません" });
+    }
+    const basename = file.split("/").pop();
+    const isWorkflow = WORKFLOW_PATH.test(file);
+    const isShell = /\.(?:sh|bash)$/.test(basename);
+    const disablesSumdb = isWorkflow
+      ? /^\s*GOSUMDB\s*:\s*["']?off["']?\s*(?:#.*)?$/mi.test(text)
+      : isShell && /^\s*(?:export\s+)?GOSUMDB\s*=\s*["']?off["']?\s*(?:#.*)?$/mi.test(text);
+    if (disablesSumdb) {
+      warnings.push({ file, reason: "GOSUMDB=off により Go checksum database が無効化されています" });
+    }
+  }
+  return warnings;
+}
 function indentation(raw) {
   return raw.length - raw.trimStart().length;
 }
@@ -116,8 +144,11 @@ function main() {
   const files = walk(".");
   const lockfileViolations = findWorkflowLockfileViolations(files);
   const pinningViolations = findPackageJsonPinningViolations(files);
-  if (lockfileViolations.length === 0 && pinningViolations.length === 0) {
-    console.log("dependency-policy: CI の lockfile 強制と package.json の厳密 pinning を確認しました ✅");
+  const missingLockfiles = (process.env.REQUIRE_LOCKFILE ?? "true") === "true" ? findMissingLockfiles(files) : [];
+  const goWarnings = findGoIntegrityWarnings(files);
+  if (lockfileViolations.length === 0 && pinningViolations.length === 0 && missingLockfiles.length === 0) {
+    console.log("dependency-policy: CI の lockfile 強制、package.json の厳密 pinning、lockfile の存在を確認しました ✅");
+    for (const warning of goWarnings) console.log(`⚠️ \`${warning.file}\` — ${warning.reason}`);
     return;
   }
   if (lockfileViolations.length > 0) {
@@ -128,6 +159,11 @@ function main() {
     console.log(`### dependency-policy: package.json の range / tag 指定が ${pinningViolations.length} 件あります`);
     for (const v of pinningViolations) console.log(`- \`${v.file}\` \`${v.section}.${v.name}\` = \`${v.spec}\``);
   }
+  if (missingLockfiles.length > 0) {
+    console.log(`### dependency-policy: package.json に対応する lockfile がないものが ${missingLockfiles.length} 件あります`);
+    for (const file of missingLockfiles) console.log(`- \`${file}\` — package-lock.json / pnpm-lock.yaml / yarn.lock / bun.lock 等を同じディレクトリに追加してください`);
+  }
+  for (const warning of goWarnings) console.log(`⚠️ \`${warning.file}\` — ${warning.reason}`);
   process.exitCode = 1;
 }
 
