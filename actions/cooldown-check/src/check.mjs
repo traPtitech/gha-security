@@ -3,10 +3,8 @@
 // 公開から min-age 日未満のバージョンが入っていたら fail する。
 //
 // 対象 (v1): npm (package-lock / pnpm-lock / yarn.lock / bun.lock / package.json の厳密指定),
-//            Go (go.mod / go.sum), GitHub Actions (uses:)
-// 公開日時はレジストリ側の記録のみを信頼する:
-//   npm registry `time` / Go module proxy `.info` / GitHub Releases `published_at`
-// コミット日時・タグ日時は作者が偽装できるため使わない。
+//            GitHub Actions (uses:)。Go moduleのintegrity設定はdependency-policyでwarningする。
+// 公開日時はnpm registry / GitHub Releasesを利用し、取得不能はwarningとして報告する。
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
@@ -134,31 +132,6 @@ export function parsePackageJsonExact(text) {
   return map;
 }
 
-export function parseGoMod(text) {
-  const map = new Map();
-  let inRequire = false;
-  for (const line of text.split("\n")) {
-    if (/^require\s*\(/.test(line)) { inRequire = true; continue; }
-    if (inRequire && /^\)/.test(line)) { inRequire = false; continue; }
-    const single = line.match(/^require\s+(\S+)\s+(v\S+)/);
-    if (single) { add(map, single[1], single[2]); continue; }
-    if (inRequire) {
-      const m = line.match(/^\s+(\S+)\s+(v\S+)/);
-      if (m) add(map, m[1], m[2]);
-    }
-  }
-  return map;
-}
-
-export function parseGoSum(text) {
-  const map = new Map();
-  for (const line of text.split("\n")) {
-    const m = line.match(/^(\S+)\s+(v\S+?)(\/go\.mod)?\s+h1:/);
-    if (m) add(map, m[1], m[2]);
-  }
-  return map;
-}
-
 export function parseWorkflowUses(text) {
   // Set<"spec comment">
   const set = new Set();
@@ -189,17 +162,14 @@ export function matchesAny(name, regexps) {
 
 // ---------- registry lookups ----------
 
-function goEscape(s) {
-  return s.replace(/[A-Z]/g, (c) => "!" + c.toLowerCase());
-}
-
-export function makeLookups(fetchImpl, token, apiUrl = "https://api.github.com") {
+export function makeLookups(fetchImpl, token, apiUrl = "https://api.github.com", timeoutMs = 15000) {
+  const requestTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15000;
   const cache = new Map();
   const get = async (url, headers = {}) => {
     if (cache.has(url)) return cache.get(url);
     let result = null;
     try {
-      const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(15000) });
+      const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
       if (res.ok) result = await res.json();
       else result = { __status: res.status };
     } catch { result = { __error: true }; }
@@ -213,11 +183,6 @@ export function makeLookups(fetchImpl, token, apiUrl = "https://api.github.com")
       const t = data?.time?.[version];
       if (t) return { date: new Date(t) };
       return { warn: `npm registry に ${name}@${version} の公開日時が見つかりません` };
-    },
-    async go(module_, version) {
-      const data = await get(`https://proxy.golang.org/${goEscape(module_)}/@v/${goEscape(version)}.info`);
-      if (data?.Time) return { date: new Date(data.Time) };
-      return { warn: `Go proxy に ${module_}@${version} の公開日時が見つかりません` };
     },
     async action(owner, repo, tag) {
       const headers = { "user-agent": "cooldown-check", accept: "application/vnd.github+json" };
@@ -242,10 +207,10 @@ const NPM_LOCKFILES = new Map([
 ]);
 
 export async function run(ctx) {
-  // thresholds: { npm, go, actions } — 0 以下でそのエコシステムのチェックを無効化
-  // failOnUnverified: boolean（既定 true）
+  // thresholds: { npm, actions } — 0 以下でそのecosystemの公開日時cooldownを無効化。identity検査はnpm thresholdと独立。
   const { changedFiles, readFileAt, baseSha, headSha, thresholds,
-          excludePatterns, lookups, now, failOnUnverified = true } = ctx;
+          excludePatterns, lookups, now, skipCooldown = false, maxLookups = 50 } = ctx;
+  const lookupLimit = Number.isInteger(maxLookups) && maxLookups >= 0 ? maxLookups : 50;
   const excludes = excludePatterns.map(globToRegExp);
   const violations = [];
   const warnings = [];
@@ -270,6 +235,7 @@ export async function run(ctx) {
   };
 
   const collect = (file, parser, eco) => {
+    if (skipCooldown) return;
     const threshold = thresholds[eco];
     if (!(threshold > 0)) return; // 無効化されたエコシステム
     const base = parser(readFileAt(baseSha, file));
@@ -284,18 +250,14 @@ export async function run(ctx) {
     const basename = file.split("/").pop();
     if (file.includes("node_modules/")) continue;
     if (basename === "package-lock.json" || basename === "npm-shrinkwrap.json") {
-      if (thresholds.npm > 0) collectIdentityChanges(file, parsePackageLockArtifacts, "npm-lock");
+      collectIdentityChanges(file, parsePackageLockArtifacts, "npm-lock");
       collect(file, parsePackageLock, "npm");
     } else if (NPM_LOCKFILES.has(basename)) {
       collect(file, NPM_LOCKFILES.get(basename), "npm");
     } else if (basename === "package.json") {
       collect(file, parsePackageJsonExact, "npm");
-    } else if (basename === "go.mod") {
-      collect(file, parseGoMod, "go");
-    } else if (basename === "go.sum") {
-      collect(file, parseGoSum, "go");
     } else if (/^\.github\/(workflows\/[^/]+\.ya?ml|actions\/.+\/action\.ya?ml)$/.test(file)) {
-      if (!(thresholds.actions > 0)) continue; // 無効化されたエコシステム
+      if (skipCooldown || !(thresholds.actions > 0)) continue;
       const base = parseWorkflowUses(readFileAt(baseSha, file));
       const head = parseWorkflowUses(readFileAt(headSha, file));
       for (const entry of head) {
@@ -321,13 +283,20 @@ export async function run(ctx) {
 
   // 重複除去して照会
   const seen = new Set();
+  let checked = 0;
   for (const t of targets) {
     const key = `${t.eco}:${t.name}@${t.version}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    if (seen.size > lookupLimit) {
+      const reason = `cooldown lookup上限（${lookupLimit}件）に達したため照会を省略しました`;
+      warnings.push(`${t.file}: ${reason}: ${t.name}@${t.version}`);
+      unverified.push({ ...t, reason });
+      continue;
+    }
+    checked += 1;
     let result;
     if (t.eco === "npm") result = await lookups.npm(t.name, t.version);
-    else if (t.eco === "go") result = await lookups.go(t.name, t.version);
     else result = await lookups.action(...t.name.split("/"), t.version);
     if (result.warn) {
       warnings.push(`${t.file}: ${result.warn}`);
@@ -340,10 +309,10 @@ export async function run(ctx) {
     }
   }
   return {
-    violations: [...identityViolations, ...violations, ...(failOnUnverified ? unverified : [])],
+    violations: [...identityViolations, ...violations],
     warnings,
     unverified,
-    checked: seen.size,
+    checked,
   };
 }
 
@@ -403,28 +372,24 @@ async function main() {
     baseSha: mergeBase,
     headSha,
     thresholds: {
-      npm: Number(process.env.NPM_MIN_AGE_DAYS ?? 7),
-      go: Number(process.env.GO_MIN_AGE_DAYS ?? 3),
+      npm: Number(process.env.NPM_MIN_AGE_DAYS ?? 3),
       actions: Number(process.env.ACTIONS_MIN_AGE_DAYS ?? 3),
     },
     excludePatterns: (process.env.EXCLUDE_PATTERNS ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
-    lookups: makeLookups(globalThis.fetch, process.env.GITHUB_TOKEN, process.env.GITHUB_API_URL),
+    lookups: makeLookups(globalThis.fetch, process.env.GITHUB_TOKEN, process.env.GITHUB_API_URL,
+      Math.max(1, Number(process.env.LOOKUP_TIMEOUT ?? 15)) * 1000),
     now: Date.now(),
-    failOnUnverified: (process.env.FAIL_ON_UNVERIFIED ?? "true") === "true",
+    maxLookups: Number(process.env.MAX_LOOKUPS ?? 50),
+    skipCooldown: (process.env.SKIP_COOLDOWN ?? "false") === "true",
   });
 
   const lines = [];
   if (result.violations.length > 0) {
     const identity = result.violations.filter((v) => v.eco === "identity");
-    const unverified = result.violations.filter((v) => v.reason && v.eco !== "identity");
-    const cooldown = result.violations.filter((v) => v.eco !== "identity" && !v.reason);
+    const cooldown = result.violations.filter((v) => v.eco !== "identity");
     if (identity.length > 0) {
       lines.push(`### ❄️ cooldown-check: 依存のartifact/source identity変更が ${identity.length} 件見つかりました`, "");
       lines.push(...identity.map((v) => `- \`${v.file}\`: \`${v.name}\`（${v.reason}）`));
-    }
-    if (unverified.length > 0) {
-      lines.push(`### ❄️ cooldown-check: 公開日時を確認できない依存が ${unverified.length} 件あります`, "");
-      lines.push(...unverified.map((v) => `- \`${v.file}\`: \`${v.name}@${v.version}\`（${v.reason}）`));
     }
     if (cooldown.length > 0) {
       lines.push(`### ❄️ cooldown-check: 公開から日が浅いバージョンが ${cooldown.length} 件見つかりました`);
@@ -433,16 +398,22 @@ async function main() {
         lines.push(`| ${v.eco} | \`${v.name}\` | \`${v.version}\` | ${v.published.slice(0, 10)} | ${v.ageDays.toFixed(1)}日 | ${v.threshold}日 | \`${v.file}\` |`);
       }
     }
-    lines.push("", "公開直後のバージョン、依存source identityの変更、または公開日時を確認できない依存を確認してください。",
-      "緊急の場合は PR に override ラベルを付けてください。");
+    if (cooldown.length > 0) {
+      lines.push("", "公開直後のバージョンは内容を確認してください。緊急の場合だけPRにoverrideラベルを付けると、公開日時cooldownをスキップできます。");
+    }
+    if (identity.length > 0) {
+      lines.push("", "artifact/source identity変更はoverride対象外です。lockfileの取得元・integrity変更を確認してください。");
+    }
+  } else if (result.unverified.length > 0) {
+    lines.push(`cooldown-check: 追加/変更された依存のうち ${result.checked} 件を確認しました。${result.unverified.length} 件は公開日時を確認できませんでした ⚠️`);
   } else {
     lines.push(`cooldown-check: 追加/変更された依存 ${result.checked} 件はすべて cooldown を満たしています ✅`);
   }
+  if ((process.env.SKIP_COOLDOWN ?? "false") === "true") {
+    lines.push(`cooldown-check: ラベル \`${process.env.OVERRIDE_LABEL}\` により公開日時cooldownをスキップしました。artifact identity検査は継続しています。`);
+  }
   if (result.warnings.length > 0) {
-    const note = (process.env.FAIL_ON_UNVERIFIED ?? "true") === "true"
-      ? "⚠️ 確認できなかったもの（fail-closed）"
-      : "⚠️ 確認できなかったもの（fail-on-unverified: false のため warn）";
-    lines.push("", `<details><summary>${note}</summary>`, "");
+    lines.push("", "<details><summary>⚠️ 確認できなかったもの（warning）</summary>", "");
     lines.push(...result.warnings.map((w) => `- ${w}`));
     lines.push("", "</details>");
   }
@@ -461,7 +432,7 @@ async function main() {
         pr: process.env.PR_NUMBER,
         token: process.env.GITHUB_TOKEN,
         output,
-        hasViolations: result.violations.length > 0,
+        hasViolations: result.violations.length > 0 || result.unverified.length > 0,
       });
     } catch (e) {
       // fork PR などでは書き込み権限がない。チェック結果自体には影響させない

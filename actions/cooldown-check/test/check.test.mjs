@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parsePackageLock, parsePnpmLock, parseYarnLock, parseBunLock,
-  parsePackageJsonExact, parseGoMod, parseGoSum, parseWorkflowUses,
+  parsePackageJsonExact, parseWorkflowUses,
   parsePackageLockArtifacts, diffDeps, globToRegExp, matchesAny, run, syncPrComment, COMMENT_MARKER,
 } from "../src/check.mjs";
 
@@ -101,31 +101,6 @@ test("parsePackageJsonExact picks only exact versions and npm aliases", () => {
   assert.equal(map.has("range"), false);
 });
 
-test("parseGoMod block and single require", () => {
-  const map = parseGoMod([
-    "module example.com/m",
-    "go 1.22",
-    "require github.com/single/dep v1.0.0",
-    "require (",
-    "\tgithub.com/labstack/echo/v5 v5.3.0",
-    "\tgolang.org/x/crypto v0.21.0 // indirect",
-    ")",
-    "replace github.com/x/y => ../local",
-  ].join("\n"));
-  assert.deepEqual(get(map, "github.com/single/dep"), ["v1.0.0"]);
-  assert.deepEqual(get(map, "github.com/labstack/echo/v5"), ["v5.3.0"]);
-  assert.deepEqual(get(map, "golang.org/x/crypto"), ["v0.21.0"]);
-  assert.equal(map.has("github.com/x/y"), false);
-});
-
-test("parseGoSum strips /go.mod suffix", () => {
-  const map = parseGoSum([
-    "github.com/a/b v1.2.3 h1:hash=",
-    "github.com/a/b v1.2.3/go.mod h1:hash=",
-  ].join("\n"));
-  assert.deepEqual(get(map, "github.com/a/b"), ["v1.2.3"]);
-});
-
 test("parseWorkflowUses", () => {
   const set = parseWorkflowUses([
     "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
@@ -176,7 +151,7 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
     },
   };
   const dates = {
-    "npm:fresh-pkg@2.0.0": "2026-07-22T00:00:00Z",   // 2日前 → npm 7日しきい値で違反
+    "npm:fresh-pkg@2.0.0": "2026-07-22T00:00:00Z",   // 2日前 → npm 3日しきい値で違反
     "npm:aged-pkg@3.0.0": "2026-06-01T00:00:00Z",    // 53日前 → OK
     "npm:@traptitech/own@0.0.1": "2026-06-01T00:00:00Z", // 組織内も既定で照会
     "actions:actions/checkout@v7.0.1": "2026-07-23T00:00:00Z", // 1日前 → 3日しきい値で違反
@@ -203,12 +178,17 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
   ]);
   assert.equal(result.warnings.length, 0);
   // 組織内パッケージも既定で照会される
-  assert.equal(result.checked, 5);
+  assert.equal(result.checked, 4);
 
-  // しきい値 0 でエコシステム単位のオフ（identity検査・照会とも無効）
-  const off = await run({ ...base, thresholds: { npm: 0, go: 0, actions: 0 } });
-  assert.deepEqual(off.violations, []);
+  // しきい値 0 はcooldownだけを無効化し、artifact identity検査は維持する
+  const off = await run({ ...base, thresholds: { npm: 0, actions: 0 } });
+  assert.deepEqual(off.violations.map((v) => v.eco), ["identity"]);
   assert.equal(off.checked, 0);
+
+  // override は公開日時cooldownだけをskipし、artifact identityは常に検査する
+  const overridden = await run({ ...base, thresholds: { npm: 7, actions: 3 }, skipCooldown: true });
+  assert.deepEqual(overridden.violations.map((v) => v.eco), ["identity"]);
+  assert.equal(overridden.checked, 0);
 
   // 明示excludeはidentity違反にも適用される
   const excluded = await run({ ...base, thresholds: { npm: 7, go: 3, actions: 0 }, excludePatterns: ["old-pkg"] });
@@ -225,7 +205,7 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
 
 });
 
-test("run(): fails closed on unverified lookups unless explicitly opted out", async () => {
+test("run(): warns on unverified lookups without failing", async () => {
   const files = {
     base: { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {} }) },
     head: { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/pkg": { version: "1.0.0" } } }) },
@@ -236,12 +216,9 @@ test("run(): fails closed on unverified lookups unless explicitly opted out", as
     excludePatterns: [], now: Date.now(),
     lookups: { npm: async () => ({ warn: "registry unavailable" }) },
   };
-  const closed = await run(ctx);
-  assert.equal(closed.unverified.length, 1);
-  assert.equal(closed.violations.length, 1);
-  const open = await run({ ...ctx, failOnUnverified: false });
-  assert.equal(open.unverified.length, 1);
-  assert.equal(open.violations.length, 0);
+  const result = await run(ctx);
+  assert.equal(result.unverified.length, 1);
+  assert.equal(result.violations.length, 0);
 
   const sha = "a".repeat(40);
   const missingComment = await run({
@@ -252,16 +229,38 @@ test("run(): fails closed on unverified lookups unless explicitly opted out", as
     lookups: {},
   });
   assert.equal(missingComment.unverified.length, 1);
-  assert.equal(missingComment.violations.length, 1);
-  const missingCommentOptOut = await run({
-    ...ctx,
-    changedFiles: [".github/workflows/ci.yaml"],
-    readFileAt: (sha_) => sha_ === "head" ? `uses: actions/checkout@${sha}\n` : "",
-    thresholds: { npm: 0, go: 0, actions: 3 },
-    lookups: {},
-    failOnUnverified: false,
+  assert.equal(missingComment.violations.length, 0);
+});
+
+test("run(): caps external cooldown lookups and warns for skipped targets", async () => {
+  const files = {
+    base: { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {} }) },
+    head: { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: {
+      "node_modules/a": { version: "1.0.0" }, "node_modules/b": { version: "1.0.0" },
+    } }) },
+  };
+  let calls = 0;
+  const result = await run({
+    changedFiles: ["package-lock.json"], readFileAt: (sha, file) => files[sha][file],
+    baseSha: "base", headSha: "head", thresholds: { npm: 3, actions: 0 },
+    excludePatterns: [], now: Date.now(), maxLookups: 1,
+    lookups: { npm: async () => { calls += 1; return { date: new Date("2020-01-01") }; } },
   });
-  assert.equal(missingCommentOptOut.violations.length, 0);
+  assert.equal(calls, 1);
+  assert.equal(result.checked, 1);
+  assert.equal(result.violations.length, 0);
+  assert.equal(result.unverified.length, 1);
+  const zero = await run({
+    changedFiles: ["package-lock.json"], readFileAt: (sha, file) => files[sha][file],
+    baseSha: "base", headSha: "head", thresholds: { npm: 3, actions: 0 },
+    excludePatterns: [], now: Date.now(), maxLookups: 0,
+    lookups: { npm: async () => ({ date: new Date("2020-01-01") }) },
+  });
+  assert.equal(zero.checked, 0);
+  assert.equal(zero.unverified.length, 2);
+  assert.equal(zero.violations.length, 0);
+
+  assert.match(result.warnings[0], /lookup上限/);
 });
 
 test("syncPrComment: create / update / resolve / skip", async () => {

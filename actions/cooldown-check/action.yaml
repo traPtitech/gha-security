@@ -2,15 +2,19 @@ name: cooldown-check
 description: |
   PR の diff から新規追加/変更された依存を抽出し、公開から min-age 日未満の
   バージョンが入っていたら fail する（手動 bump・bot 経由を問わず全 PR に効く）。
-  対象: npm 系 lockfile / package.json 厳密指定 / go.mod / go.sum / GitHub Actions の uses:
+  対象: npm 系 lockfile / package.json 厳密指定 / GitHub Actions の uses:。
+  Go moduleのintegrity設定はdependency-policyがwarningとして確認する。
   呼び出し側で fetch-depth: 0 の checkout が必要。
 inputs:
   npm-min-age-days:
     description: npm のしきい値（日）。0 で npm チェックを無効化
-    default: "7"
-  go-min-age-days:
-    description: Go のしきい値（日）。0 で Go チェックを無効化
     default: "3"
+  max-lookups:
+    description: PRごとに外部へ行う一意なcooldown lookupの最大数
+    default: "50"
+  lookup-timeout:
+    description: 各外部cooldown lookupのタイムアウト秒数
+    default: "15"
   actions-min-age-days:
     description: GitHub Actions のしきい値（日）。0 で actions チェックを無効化
     default: "3"
@@ -22,9 +26,6 @@ inputs:
     default: cooldown-override
   pr-comment:
     description: 違反内容を PR コメント（sticky）として投稿するか。要 pull-requests write 権限
-    default: "true"
-  fail-on-unverified:
-    description: レジストリ/API照会不能を未検証としてfailにするか
     default: "true"
   github-token:
     description: GitHub API 用トークン（Actions のリリース日時照会に使用）
@@ -38,26 +39,19 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Skip by override label
-      if: contains(github.event.pull_request.labels.*.name, inputs.override-label)
-      shell: bash
-      env:
-        OVERRIDE_LABEL: ${{ inputs.override-label }}
-      run: |
-        echo "::notice::cooldown-check は '${OVERRIDE_LABEL}' ラベルによりスキップされました"
-        echo "cooldown-check: ラベル \`${OVERRIDE_LABEL}\` によりスキップ ⏭️" >> "$GITHUB_STEP_SUMMARY"
-    - name: Run cooldown check
-      if: ${{ !contains(github.event.pull_request.labels.*.name, inputs.override-label) }}
+    - name: Run cooldown and artifact identity checks
       shell: bash
       env:
         BASE_SHA: ${{ inputs.base-sha != '' && inputs.base-sha || github.event.pull_request.base.sha }}
         HEAD_SHA: ${{ inputs.head-sha != '' && inputs.head-sha || github.event.pull_request.head.sha }}
         NPM_MIN_AGE_DAYS: ${{ inputs.npm-min-age-days }}
-        GO_MIN_AGE_DAYS: ${{ inputs.go-min-age-days }}
+        MAX_LOOKUPS: ${{ inputs.max-lookups }}
+        LOOKUP_TIMEOUT: ${{ inputs.lookup-timeout }}
         ACTIONS_MIN_AGE_DAYS: ${{ inputs.actions-min-age-days }}
         EXCLUDE_PATTERNS: ${{ inputs.exclude }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_COMMENT: ${{ inputs.pr-comment }}
-        FAIL_ON_UNVERIFIED: ${{ inputs.fail-on-unverified }}
+        SKIP_COOLDOWN: ${{ contains(github.event.pull_request.labels.*.name, inputs.override-label) }}
+        OVERRIDE_LABEL: ${{ inputs.override-label }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: node "${GITHUB_ACTION_PATH}/src/check.mjs"
