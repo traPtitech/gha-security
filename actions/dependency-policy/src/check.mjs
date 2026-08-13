@@ -77,7 +77,13 @@ export function findGoIntegrityWarnings(files) {
       const parent = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
       if (!paths.has(parent + "go.sum")) warnings.push({ file, reason: "外部 module を使う go.mod に go.sum がありません" });
     }
-    if (/\bGOSUMDB\s*(?:=|:)\s*(?:["']?off["']?)(?:\s|$|#)/mi.test(text)) {
+    const basename = file.split("/").pop();
+    const isWorkflow = WORKFLOW_PATH.test(file);
+    const isShell = /\.(?:sh|bash)$/.test(basename);
+    const disablesSumdb = isWorkflow
+      ? /^\s*GOSUMDB\s*:\s*["']?off["']?\s*(?:#.*)?$/mi.test(text)
+      : isShell && /^\s*(?:export\s+)?GOSUMDB\s*=\s*["']?off["']?\s*(?:#.*)?$/mi.test(text);
+    if (disablesSumdb) {
       warnings.push({ file, reason: "GOSUMDB=off により Go checksum database が無効化されています" });
     }
   }

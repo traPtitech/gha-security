@@ -137,6 +137,8 @@ test("findGoIntegrityWarnings reports missing go.sum and repository GOSUMDB=off"
     "cmd/tool/go.mod": "module example/tool\nrequire example.com/dep v1.2.3\n",
     ".github/workflows/ci.yaml": "env:\n  GOSUMDB: off\n",
     "scripts/build.sh": "export GOSUMDB=off\n",
+    "README.md": "GOSUMDB=off はwarningになる、という説明だけです\n",
+    "test.mjs": "const sample = 'GOSUMDB=off';\n",
   });
   assert.deepEqual(warnings, [
     { file: "cmd/tool/go.mod", reason: "外部 module を使う go.mod に go.sum がありません" },
