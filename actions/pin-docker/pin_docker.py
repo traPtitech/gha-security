@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dockerfile の FROM / compose の image: を digest 固定する。
+"""DockerfileのFROM、Composeのimage:、Actionsのcontainer/services/docker://をdigest固定する。
 
 digest の解決には frizbee の単一参照モード (`frizbee image <ref>`) を使い、
 ファイルの書き換えはこのスクリプトが行う（元の参照表記を保ったまま
@@ -25,6 +25,7 @@ from pathlib import Path
 
 DOCKERFILE_NAME = re.compile(r"^(Dockerfile[^/]*|[^/]+\.dockerfile)$", re.IGNORECASE)
 COMPOSE_NAME = re.compile(r"^(docker-)?compose[^/]*\.ya?ml$", re.IGNORECASE)
+WORKFLOW_PATH = re.compile(r"^\.github/workflows/.+\.ya?ml$", re.IGNORECASE)
 FROM_RE = re.compile(r"^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+[Aa][Ss]\s+(\S+))?", re.IGNORECASE)
 COPY_FROM_RE = re.compile(r"^\s*COPY\s+(?:.*\s)?--from=([^\s]+)", re.IGNORECASE)
 IMAGE_RE = re.compile(r"""^(\s*(?:-\s+)?)image:\s*(['"]?)([^\s'"#]+)\2""")
@@ -38,12 +39,19 @@ def discover(root: Path):
         if not path.is_file() or SKIP_DIRS.intersection(path.parts):
             continue
         name = path.name
-        if DOCKERFILE_NAME.match(name) or COMPOSE_NAME.match(name):
+        relative = path.relative_to(root).as_posix()
+        if DOCKERFILE_NAME.match(name) or COMPOSE_NAME.match(name) or WORKFLOW_PATH.match(relative):
             yield path
 
 
 def classify(path: Path) -> str:
-    return "compose" if COMPOSE_NAME.match(path.name) else "dockerfile"
+    if DOCKERFILE_NAME.match(path.name):
+        return "dockerfile"
+    if COMPOSE_NAME.match(path.name):
+        return "compose"
+    if ".github" in path.parts and "workflows" in path.parts:
+        return "workflow"
+    return "dockerfile"
 
 
 def needs_pin(ref: str, stages: set[str]) -> bool:
@@ -118,6 +126,120 @@ def compose_refs(lines: list[str]):
     return out
 
 
+def workflow_refs(lines: list[str]):
+    """Actions schemaの明白なcontainer/services imageとstep-level docker:// usesだけを返す。"""
+    def indent(s: str) -> int:
+        return len(s) - len(s.lstrip(" "))
+
+    out = []
+    jobs_indent = job_indent = job_child_indent = None
+    container_indent = container_child_indent = None
+    services_indent = service_indent = service_child_indent = None
+    steps_indent = step_indent = step_field_indent = step_block_indent = None
+    flow_container = re.compile(r"^\s*container\s*:\s*\{\s*image\s*:\s*(['\"]?)([^\s,'\"}]+)\1")
+    scalar_container = re.compile(r"^\s*container\s*:\s*(?:(['\"])(.*?)\1|([^\s#]+))")
+    image = IMAGE_RE
+    inline_docker_uses = re.compile(r"^\s*-\s+uses:\s*['\"]?docker://([^\s'\"#]+)")
+    continuation_docker_uses = re.compile(r"^\s*uses:\s*['\"]?docker://([^\s'\"#]+)")
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        ind = indent(line)
+
+        if ind == 0 and re.match(r"^jobs\s*:\s*(?:#.*)?$", line):
+            jobs_indent = ind
+            job_indent = None
+            continue
+        if jobs_indent is None or ind <= jobs_indent:
+            continue
+
+        # jobs.<job> は jobs: の直下mapだけを受け入れる。
+        if (job_indent is None or ind <= job_indent) and re.match(r"^\s*[^#-][^:]*:\s*(?:#.*)?$", line):
+            job_indent = ind
+            job_child_indent = None
+            container_indent = services_indent = steps_indent = None
+            continue
+        if job_indent is None or ind <= job_indent:
+            continue
+        if job_child_indent is None:
+            job_child_indent = ind
+        if ind < job_child_indent:
+            continue
+        if ind == job_child_indent:
+            container_indent = container_child_indent = None
+            services_indent = service_indent = service_child_indent = None
+            steps_indent = step_indent = step_field_indent = step_block_indent = None
+            flow = flow_container.match(line)
+            if flow and needs_pin(flow.group(2), set()):
+                out.append((i, flow.group(2)))
+                continue
+            scalar = scalar_container.match(line)
+            scalar_ref = scalar.group(2) or scalar.group(3) if scalar else None
+            if scalar_ref and needs_pin(scalar_ref, set()):
+                out.append((i, scalar_ref))
+                continue
+            if re.match(r"^\s*container\s*:\s*(?:#.*)?$", line):
+                container_indent = ind
+                container_child_indent = None
+                continue
+            if re.match(r"^\s*services\s*:\s*(?:#.*)?$", line):
+                services_indent = ind
+                service_indent = service_child_indent = None
+                continue
+            if re.match(r"^\s*steps\s*:\s*(?:#.*)?$", line):
+                steps_indent = ind
+                step_indent = step_field_indent = step_block_indent = None
+                continue
+
+        if container_indent is not None and ind > container_indent:
+            if container_child_indent is None:
+                container_child_indent = ind
+            if ind == container_child_indent:
+                m = image.match(line)
+                if m and needs_pin(m.group(3), set()):
+                    out.append((i, m.group(3)))
+                    continue
+
+        if services_indent is not None and ind > services_indent:
+            if service_indent is None or ind <= service_indent:
+                if re.match(r"^\s*[^#-][^:]*:\s*(?:#.*)?$", line):
+                    service_indent = ind
+                    service_child_indent = None
+                    continue
+            if service_indent is not None and ind > service_indent:
+                if service_child_indent is None:
+                    service_child_indent = ind
+                if ind == service_child_indent:
+                    m = image.match(line)
+                    if m and needs_pin(m.group(3), set()):
+                        out.append((i, m.group(3)))
+                        continue
+
+        if steps_indent is not None and ind >= steps_indent:
+            if step_block_indent is not None and ind > step_block_indent:
+                continue
+            if re.match(r"^\s*-\s*", line):
+                step_indent = ind
+                step_field_indent = None
+                step_block_indent = ind if re.match(r"^\s*-\s*run\s*:\s*[>|]", line) else None
+                inline = inline_docker_uses.match(line)
+                if inline and needs_pin(inline.group(1), set()):
+                    out.append((i, inline.group(1)))
+                    continue
+            elif step_indent is not None and ind > step_indent:
+                if step_field_indent is None:
+                    step_field_indent = ind
+                if ind == step_field_indent:
+                    if re.match(r"^\s*run\s*:\s*[>|]", line):
+                        step_block_indent = ind
+                        continue
+                    m = continuation_docker_uses.match(line)
+                    if m and needs_pin(m.group(1), set()):
+                        out.append((i, m.group(1)))
+    return out
+
 def registry_for(ref: str) -> str:
     """Return the registry host, applying Docker's implicit Docker Hub default."""
     raw_first = ref.split("/", 1)[0]
@@ -186,8 +308,9 @@ def main() -> int:
     image_exclude = re.compile(args.image_exclude_regex) if args.image_exclude_regex else None
 
     if args.files:
-        targets = [Path(f) for f in args.files
-                   if Path(f).is_file() and (DOCKERFILE_NAME.match(Path(f).name) or COMPOSE_NAME.match(Path(f).name))]
+        targets = [Path(f) for f in args.files if Path(f).is_file()
+                   and (DOCKERFILE_NAME.match(Path(f).name) or COMPOSE_NAME.match(Path(f).name)
+                        or (".github" in Path(f).parts and "workflows" in Path(f).parts))]
     else:
         targets = list(discover(Path(".")))
     if file_exclude:
@@ -202,7 +325,8 @@ def main() -> int:
 
     for path in targets:
         lines = path.read_text(errors="replace").splitlines(keepends=True)
-        refs = dockerfile_refs(lines) if classify(path) == "dockerfile" else compose_refs(lines)
+        kind = classify(path)
+        refs = dockerfile_refs(lines) if kind == "dockerfile" else compose_refs(lines) if kind == "compose" else workflow_refs(lines)
         refs = [(i, r) for i, r in refs if not (image_exclude and image_exclude.search(r))]
         if not refs:
             continue
@@ -225,7 +349,10 @@ def main() -> int:
             if digest is None:
                 failed.append((path, ref))
                 continue
-            lines[i] = lines[i].replace(ref, f"{ref}@{digest}", 1)
+            if kind == "workflow" and "docker://" in lines[i]:
+                lines[i] = lines[i].replace(f"docker://{ref}", f"docker://{ref}@{digest}", 1)
+            else:
+                lines[i] = lines[i].replace(ref, f"{ref}@{digest}", 1)
             fixed.append((path, ref, digest))
             changed = True
         if changed:

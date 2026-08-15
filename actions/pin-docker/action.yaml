@@ -1,6 +1,6 @@
 name: pin-docker
 description: |
-  Dockerfile の FROM / compose の image: を digest 固定する。
+  Dockerfile の FROM / Compose の image: / GitHub Actions の container・services image・docker:// actionを digest 固定する。
   digest 解決は frizbee(単一参照モード)、書き換えは同梱の pin_docker.py が行う。
   事前に setup-tools で frizbee をインストールしておくこと（check モードでは不要）。
 inputs:
