@@ -83,7 +83,7 @@ jobs:
           {
             echo 'files<<EOF'
             git diff --name-only "$(git merge-base "$BASE_SHA" HEAD)"..HEAD \
-              | grep -iE '(^|/)(Dockerfile[^/]*|[^/]+\.dockerfile|(docker-)?compose[^/]*\.ya?ml)$' || true
+              | grep -iE '(^|/)(Dockerfile[^/]*|[^/]+\.dockerfile|(docker-)?compose[^/]*\.ya?ml|\.github/workflows/[^/]+\.ya?ml)$' || true
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
