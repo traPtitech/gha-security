@@ -61,7 +61,7 @@ jobs:
 
       - name: Check docker images are pinned
         if: inputs.pin-docker
-        uses: traPtitech/gha-security/actions/pin-docker@ce0b76babbc29dc049e7ef91d39fa4a6c215f114
+        uses: traPtitech/gha-security/actions/pin-docker@3efcee7aae4bd20f825eb56dd76d2da3e4b48021
         with:
           mode: check
           file-exclude-regex: ${{ inputs.file-exclude-regex }}

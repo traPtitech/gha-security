@@ -91,7 +91,7 @@ jobs:
         id: pin-docker
         if: inputs.pin-docker && steps.docker-files.outputs.files != ''
         continue-on-error: true
-        uses: traPtitech/gha-security/actions/pin-docker@42930ae1c2f5e12c05f89918fc6fed0395276067
+        uses: traPtitech/gha-security/actions/pin-docker@3efcee7aae4bd20f825eb56dd76d2da3e4b48021
         with:
           mode: fix
           files: ${{ steps.docker-files.outputs.files }}
