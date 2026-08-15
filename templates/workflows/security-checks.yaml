@@ -14,7 +14,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: traPtitech/gha-security/.github/workflows/pin-support.yaml@379b7fe55ff22287477174f9e61eaccd6639e7cb
+    uses: traPtitech/gha-security/.github/workflows/pin-support.yaml@eb1011378719b03e7810036b5d1d1163e3482a54
     with:
       mode: suggest # commit にすると PR ブランチへ直接修正コミットを push する（要 contents: write）
 
@@ -22,25 +22,25 @@ jobs:
   pin-check:
     permissions:
       contents: read
-    uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@379b7fe55ff22287477174f9e61eaccd6639e7cb
+    uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@eb1011378719b03e7810036b5d1d1163e3482a54
 
   # CI の lockfile 強制と package.json の range / tag 指定を検出して fail
   dependency-policy:
     permissions:
       contents: read
-    uses: traPtitech/gha-security/.github/workflows/dependency-policy.yaml@379b7fe55ff22287477174f9e61eaccd6639e7cb
+    uses: traPtitech/gha-security/.github/workflows/dependency-policy.yaml@eb1011378719b03e7810036b5d1d1163e3482a54
 
-  # 公開から日が浅い依存バージョンの混入を検出して fail し、違反内容を PR コメントで通知
-  # 緊急時は PR に `cooldown-override` ラベルを付けるとスキップされる
+  # npm / GitHub Actionsの公開直後更新を検出し、npm artifact identity変更は常にfailする
+  # `cooldown-override` は公開日時cooldownだけをskipし、identity検査は継続する
   # 不要な job はまるごと削除してよい（各機能は独立してオン/オフ可能）
   # 組織内依存も既定で検査対象。cooldownの例外は `with.exclude` に明示する。
   cooldown-check:
     permissions:
       contents: read
       pull-requests: write # 違反の PR コメント投稿用（pr-comment: false なら read のみで可）
-    uses: traPtitech/gha-security/.github/workflows/cooldown-check.yaml@379b7fe55ff22287477174f9e61eaccd6639e7cb
+    uses: traPtitech/gha-security/.github/workflows/cooldown-check.yaml@eb1011378719b03e7810036b5d1d1163e3482a54
     # with:
     #   pr-comment: false        # PR コメント通知を無効化する場合
-    #   npm-min-age-days: 0      # npm チェックを無効化する場合
-    #   go-min-age-days: 0       # Go チェックを無効化する場合
-    #   actions-min-age-days: 0  # actions チェックを無効化する場合
+    #   npm-min-age-days: 0      # npm公開日時cooldownだけを無効化（identityは継続）
+    #   actions-min-age-days: 0  # GitHub Actions公開日時cooldownを無効化
+    #   max-lookups: 25          # 外部metadata lookupの上限をさらに下げる
