@@ -260,6 +260,15 @@ test("run(): caps external cooldown lookups and warns for skipped targets", asyn
   assert.equal(zero.unverified.length, 2);
   assert.equal(zero.violations.length, 0);
 
+  const fractional = await run({
+    changedFiles: ["package-lock.json"], readFileAt: (sha, file) => files[sha][file],
+    baseSha: "base", headSha: "head", thresholds: { npm: 3, actions: 0 },
+    excludePatterns: [], now: Date.now(), maxLookups: 0.5,
+    lookups: { npm: async () => ({ date: new Date("2020-01-01") }) },
+  });
+  assert.equal(fractional.checked, 0);
+  assert.equal(fractional.unverified.length, 2);
+
   assert.match(result.warnings[0], /lookup上限/);
 });
 

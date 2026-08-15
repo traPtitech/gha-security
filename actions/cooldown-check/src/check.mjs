@@ -210,7 +210,10 @@ export async function run(ctx) {
   // thresholds: { npm, actions } — 0 以下でそのecosystemの公開日時cooldownを無効化。identity検査はnpm thresholdと独立。
   const { changedFiles, readFileAt, baseSha, headSha, thresholds,
           excludePatterns, lookups, now, skipCooldown = false, maxLookups = 50 } = ctx;
-  const lookupLimit = Number.isInteger(maxLookups) && maxLookups >= 0 ? maxLookups : 50;
+  const numericMaxLookups = Number(maxLookups);
+  const lookupLimit = Number.isFinite(numericMaxLookups) && numericMaxLookups >= 0
+    ? Math.floor(numericMaxLookups)
+    : 50;
   const excludes = excludePatterns.map(globToRegExp);
   const violations = [];
   const warnings = [];
