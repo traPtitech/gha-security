@@ -1,0 +1,23 @@
+name: Demo - Action SHA pin policy violation
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/example-unpinned-action.yaml
+      - .github/workflows/demo-action-sha-violation.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  demonstrate-action-sha-violation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: traPtitech/gha-security/actions/setup-tools@5f05a83ab824f4327126c102c0b1be10017e2758
+        with:
+          install-frizbee: "false"
+      - name: Show mutable Action reference violation (expected failure)
+        run: pinact run --check --exclude '^traPtitech/gha-security/'
