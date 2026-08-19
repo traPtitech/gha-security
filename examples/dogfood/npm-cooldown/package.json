@@ -1,0 +1,7 @@
+{
+  "name": "dogfood-npm-cooldown-violation",
+  "private": true,
+  "dependencies": {
+    "lodash": "4.17.21"
+  }
+}
