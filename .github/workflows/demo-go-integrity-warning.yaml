@@ -1,0 +1,22 @@
+name: Demo - Go integrity warnings
+
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/go-integrity/go.mod
+      - .github/workflows/example-go-integrity-warning.yaml
+      - .github/workflows/demo-go-integrity-warning.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  demonstrate-go-integrity-warning:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./actions/dependency-policy
+        with:
+          require-lockfile: "false"
