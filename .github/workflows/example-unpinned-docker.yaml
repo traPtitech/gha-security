@@ -6,6 +6,8 @@ name: Demo - unpinned Docker references
 on:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   container-example:
     runs-on: ubuntu-latest
