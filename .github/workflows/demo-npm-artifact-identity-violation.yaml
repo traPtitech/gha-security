@@ -1,0 +1,20 @@
+name: Demo - npm artifact identity violation
+
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/npm-artifact/**
+      - .github/workflows/demo-npm-artifact-identity-violation.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  demonstrate-npm-artifact-identity-violation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show same-version artifact substitution (expected failure)
+        run: node examples/dogfood/npm-artifact/demo-identity-violation.mjs
