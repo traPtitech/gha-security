@@ -4,6 +4,8 @@ name: Demo - dependency policy violation fixture
 on:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   fixture:
     runs-on: ubuntu-latest
