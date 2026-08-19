@@ -1,0 +1,21 @@
+name: Demo - unpinned Docker references
+
+# このworkflow自体は手動実行専用。PRでは実行されない。
+# このファイルを含むdraft PRでは、標準のpin-checkが以下3系統を検出して
+# 意図的に失敗することを示す。デモ後はこのPRをcloseし、mergeしない。
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  container-example:
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-alpine
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - name: Docker action example
+        uses: docker://alpine:3.20
