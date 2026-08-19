@@ -1,0 +1,25 @@
+name: Demo - Docker digest policy violation
+
+# #24のための意図的な失敗job。mergeしない。
+# example-unpinned-docker.yaml の3種類の未固定参照を実際に検出し、
+# GitHub Actions上のログとsummaryにエラーとして表示する。
+on:
+  pull_request:
+    paths:
+      - .github/workflows/example-unpinned-docker.yaml
+      - .github/workflows/demo-docker-digest-violation.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  demonstrate-docker-digest-violation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show digest pinning violations (expected failure)
+        run: |
+          python3 actions/pin-docker/pin_docker.py --check \
+            --files .github/workflows/example-unpinned-docker.yaml
