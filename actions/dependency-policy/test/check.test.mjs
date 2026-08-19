@@ -167,6 +167,12 @@ test("CLI exits 1 for policy violations, exits 0 when clean, and ignores symlink
     assert.match(result.stdout, /対応する lockfile/);
     result = spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env: { ...process.env, REQUIRE_LOCKFILE: "false" } });
     assert.equal(result.status, 0);
+
+    mkdirSync(join(root, "cmd/tool"), { recursive: true });
+    writeFileSync(join(root, "cmd/tool/go.mod"), "module example/tool\nrequire example.com/dep v1.2.3\n");
+    result = spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env: { ...process.env, REQUIRE_LOCKFILE: "false" } });
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /::warning file=cmd\/tool\/go\.mod::外部 module を使う go\.mod に go\.sum がありません/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

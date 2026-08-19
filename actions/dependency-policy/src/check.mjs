@@ -140,6 +140,21 @@ function walk(root, current = root) {
   return out;
 }
 
+function escapeWorkflowCommandProperty(value) {
+  return String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A").replaceAll(":", "%3A").replaceAll(",", "%2C");
+}
+
+function escapeWorkflowCommandMessage(value) {
+  return String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+}
+
+function emitGoWarnings(warnings) {
+  for (const warning of warnings) {
+    console.log(`::warning file=${escapeWorkflowCommandProperty(warning.file)}::${escapeWorkflowCommandMessage(warning.reason)}`);
+    console.log(`⚠️ \`${warning.file}\` — ${warning.reason}`);
+  }
+}
+
 function main() {
   const files = walk(".");
   const lockfileViolations = findWorkflowLockfileViolations(files);
@@ -148,7 +163,7 @@ function main() {
   const goWarnings = findGoIntegrityWarnings(files);
   if (lockfileViolations.length === 0 && pinningViolations.length === 0 && missingLockfiles.length === 0) {
     console.log("dependency-policy: CI の lockfile 強制、package.json の厳密 pinning、lockfile の存在を確認しました ✅");
-    for (const warning of goWarnings) console.log(`⚠️ \`${warning.file}\` — ${warning.reason}`);
+    emitGoWarnings(goWarnings);
     return;
   }
   if (lockfileViolations.length > 0) {
@@ -163,7 +178,7 @@ function main() {
     console.log(`### dependency-policy: package.json に対応する lockfile がないものが ${missingLockfiles.length} 件あります`);
     for (const file of missingLockfiles) console.log(`- \`${file}\` — package-lock.json / pnpm-lock.yaml / yarn.lock / bun.lock 等を同じディレクトリに追加してください`);
   }
-  for (const warning of goWarnings) console.log(`⚠️ \`${warning.file}\` — ${warning.reason}`);
+  emitGoWarnings(goWarnings);
   process.exitCode = 1;
 }
 
