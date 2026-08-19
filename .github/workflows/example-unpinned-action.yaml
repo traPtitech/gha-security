@@ -1,0 +1,11 @@
+name: Demo - unpinned Action reference
+
+# 手動専用の意図的な違反fixture。mergeしない。
+on:
+  workflow_dispatch:
+
+jobs:
+  example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
