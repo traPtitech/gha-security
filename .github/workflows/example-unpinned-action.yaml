@@ -4,6 +4,9 @@ name: Demo - unpinned Action reference
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   example:
     runs-on: ubuntu-latest
