@@ -4,6 +4,8 @@ name: Demo - Go integrity warning fixture
 on:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   fixture:
     runs-on: ubuntu-latest
