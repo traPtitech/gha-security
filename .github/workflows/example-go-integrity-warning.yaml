@@ -1,0 +1,13 @@
+name: Demo - Go integrity warning fixture
+
+# 手動専用fixture。GOSUMDB=off はwarning対象。
+on:
+  workflow_dispatch:
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    env:
+      GOSUMDB: "off"
+    steps:
+      - run: true
