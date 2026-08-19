@@ -17,6 +17,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: traPtitech/gha-security/actions/dependency-policy@1668407015661597c2286cd77968935fd568addf
+      - uses: traPtitech/gha-security/actions/dependency-policy@52e0fa7f9e98971a55ed18e8a4bf2aec66ccf119
         with:
           require-lockfile: ${{ inputs.require-lockfile }}
