@@ -1,0 +1,22 @@
+name: Demo - dependency policy violation
+
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/dependency-policy/package.json
+      - .github/workflows/example-dependency-policy-violation.yaml
+      - .github/workflows/demo-dependency-policy-violation.yaml
+
+permissions:
+  contents: read
+
+jobs:
+  demonstrate-dependency-policy-violation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./actions/dependency-policy
+        with:
+          require-lockfile: "true"
