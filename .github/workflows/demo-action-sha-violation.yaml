@@ -20,4 +20,4 @@ jobs:
         with:
           install-frizbee: "false"
       - name: Show mutable Action reference violation (expected failure)
-        run: pinact run --check
+        run: pinact run --check --exclude '^traPtitech/gha-security/'
