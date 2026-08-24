@@ -1,5 +1,5 @@
 name: Demo - dependency policy violation
-true:
+on:
   pull_request:
     paths:
     - examples/dogfood/dependency-policy/package.json
