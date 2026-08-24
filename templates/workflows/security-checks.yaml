@@ -24,11 +24,15 @@ jobs:
       contents: read
     uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@6bb89207cf517f2811cc0b4c4053a16aec47959b
 
-  # CI の lockfile 強制と package.json の range / tag 指定を検出して fail
+  # CI の lockfile 強制と package.json の range / tag 指定を検出して fail。
+  # Go integrity warningはannotationとsticky PR commentで通知する。
   dependency-policy:
     permissions:
       contents: read
-    uses: traPtitech/gha-security/.github/workflows/dependency-policy.yaml@6bb89207cf517f2811cc0b4c4053a16aec47959b
+      pull-requests: write # Go integrity warningのPRコメント用（無効化する場合は不要）
+    uses: traPtitech/gha-security/.github/workflows/dependency-policy.yaml@bd1ead643b9a9a0b8f7207d61cc45748ee023759
+    # with:
+    #   go-warning-pr-comment: false # Go integrityのPRコメントだけを無効化
 
   # npm / GitHub Actionsの公開直後更新を検出し、npm artifact identity変更は常にfailする
   # `cooldown-override` は公開日時cooldownだけをskipし、identity検査は継続する
