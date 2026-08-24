@@ -9,14 +9,22 @@ on:
         description: package.json と同じディレクトリにlockfileを必須にするか（library等はfalseで明示除外）
         type: boolean
         default: true
+      go-warning-pr-comment:
+        description: Go integrity warningをPR上のsticky commentとして投稿するか
+        type: boolean
+        default: true
 
 jobs:
   dependency-policy:
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: traPtitech/gha-security/actions/dependency-policy@52e0fa7f9e98971a55ed18e8a4bf2aec66ccf119
+      - uses: traPtitech/gha-security/actions/dependency-policy@31efbfdb94952b5fe0d48d6c3e6ca9522276de7c
         with:
           require-lockfile: ${{ inputs.require-lockfile }}
+          go-warning-pr-comment: ${{ inputs.go-warning-pr-comment }}
