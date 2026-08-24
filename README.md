@@ -15,7 +15,7 @@ traPtitech のリポジトリで、レビューを経ない依存物の実行経
 | `pin-support.yaml` | PR 内の未固定参照を検出し、**修正を suggestion または直接コミットで返す**（作業の肩代わり） | `pull_request` |
 | `pin-check.yaml` | 未固定参照があれば fail する退行防止 lint（`--verify-comment` でコメント偽装も検出） | `pull_request` |
 | `cooldown-check.yaml` | npm / GitHub Actionsの公開 N 日未満の版、または同一versionのnpm artifact identity変更があれば fail。公開日時を取得できない場合は warning。違反内容は **sticky な PR コメント**（bot コメント1つを更新）でも通知され、解消すると ✅ に変わる | `pull_request` |
-| `dependency-policy.yaml` | `package.json` のrange / dist-tag、lockfile不在、明白なJS non-frozen installをfailする。Goの`go.sum`不在や`GOSUMDB=off`はwarningする | `pull_request` |
+| `dependency-policy.yaml` | `package.json` のrange / dist-tag、lockfile不在、明白なJS non-frozen installをfailする。Goの`go.sum`不在や`GOSUMDB=off`はwarning annotationとstickyなPRコメントで通知する | `pull_request` |
 | `pin.yaml` | リポジトリ全体を固定して PR を作成。`update: true` で bot なしリポジトリの追従更新も担う | `schedule` / `workflow_dispatch` |
 
 ### Composite actions（`actions/`）
