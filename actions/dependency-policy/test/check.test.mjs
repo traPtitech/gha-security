@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
   findWorkflowLockfileViolations, findPackageJsonPinningViolations,
-  findMissingLockfiles, findGoIntegrityWarnings,
+  findMissingLockfiles, findGoIntegrityWarnings, syncGoWarningPrComment,
 } from "../src/check.mjs";
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
@@ -145,6 +145,43 @@ test("findGoIntegrityWarnings reports missing go.sum and repository GOSUMDB=off"
     { file: ".github/workflows/ci.yaml", reason: "GOSUMDB=off により Go checksum database が無効化されています" },
     { file: "scripts/build.sh", reason: "GOSUMDB=off により Go checksum database が無効化されています" },
   ]);
+});
+
+test("syncGoWarningPrComment creates, updates, and resolves one sticky PR comment", async () => {
+  const calls = [];
+  const response = (body, ok = true, status = 200) => ({ ok, status, json: async () => body });
+  let existing = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url.includes("/comments?")) return response(existing);
+    if (options.method === "POST") return response({ id: 7 }, true, 201);
+    if (options.method === "PATCH") return response({ id: 7 });
+    throw new Error(`unexpected request: ${url}`);
+  };
+  const common = { fetchImpl, api: "https://api.example", repo: "owner/repo", pr: 12, token: "redacted" };
+  const warnings = [{ file: "cmd/tool/go.mod", reason: "go.sum がありません" }];
+
+  assert.equal(await syncGoWarningPrComment({ ...common, warnings }), "created");
+  assert.match(JSON.parse(calls.at(-1).options.body).body, /cmd\/tool\/go\.mod/);
+
+  existing = Array.from({ length: 100 }, (_, id) => ({ id, body: `comment-${id}` }));
+  const secondPage = [{ id: 101, body: "<!-- gha-security/go-integrity-warning -->\nold" }];
+  const pagedFetch = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url.includes("/comments?")) return response(url.endsWith("page=2") ? secondPage : existing);
+    if (options.method === "PATCH") return response({ id: 101 });
+    if (options.method === "POST") return response({ id: 102 }, true, 201);
+    throw new Error(`unexpected request: ${url}`);
+  };
+  assert.equal(await syncGoWarningPrComment({ ...common, fetchImpl: pagedFetch, warnings }), "updated");
+  assert.match(calls.at(-1).url, /issues\/comments\/101$/);
+
+  existing = [{ id: 7, body: "<!-- gha-security/go-integrity-warning -->\nold" }];
+  assert.equal(await syncGoWarningPrComment({ ...common, warnings }), "updated");
+  assert.match(JSON.parse(calls.at(-1).options.body).body, /go\.sum がありません/);
+
+  assert.equal(await syncGoWarningPrComment({ ...common, warnings: [] }), "resolved");
+  assert.match(JSON.parse(calls.at(-1).options.body).body, /解消されました/);
 });
 
 test("CLI exits 1 for policy violations, exits 0 when clean, and ignores symlinks", () => {

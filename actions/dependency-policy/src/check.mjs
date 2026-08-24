@@ -155,12 +155,76 @@ function emitGoWarnings(warnings) {
   }
 }
 
-function main() {
+const GO_WARNING_COMMENT_MARKER = "<!-- gha-security/go-integrity-warning -->";
+
+function goWarningCommentBody(warnings) {
+  if (warnings.length === 0) return `${GO_WARNING_COMMENT_MARKER}\nGo integrity warning は解消されました ✅`;
+  const lines = [
+    GO_WARNING_COMMENT_MARKER,
+    `### ⚠️ Go integrity warning が ${warnings.length} 件あります`,
+    "",
+  ];
+  for (const warning of warnings) {
+    const file = warning.file.replaceAll("`", "\\`");
+    lines.push(`- \`${file}\` — ${warning.reason}`);
+  }
+  lines.push("", "この確認はwarning-onlyです。CIは失敗しませんが、go.sumとGOSUMDB設定を確認してください。");
+  return lines.join("\n");
+}
+
+export async function syncGoWarningPrComment({ fetchImpl, api, repo, pr, token, warnings }) {
+  const headers = {
+    authorization: `Bearer ${token}`,
+    accept: "application/vnd.github+json",
+    "user-agent": "dependency-policy",
+    "content-type": "application/json",
+  };
+  const body = goWarningCommentBody(warnings);
+  const comments = [];
+  for (let page = 1; ; page += 1) {
+    const listed = await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments?per_page=100&page=${page}`, { headers });
+    if (!listed.ok) throw new Error(`list comments: HTTP ${listed.status}`);
+    const currentPage = await listed.json();
+    comments.push(...currentPage);
+    if (currentPage.length < 100) break;
+  }
+  const existing = comments.find((comment) => typeof comment.body === "string" && comment.body.startsWith(GO_WARNING_COMMENT_MARKER));
+  if (existing) {
+    const updated = await fetchImpl(`${api}/repos/${repo}/issues/comments/${existing.id}`, {
+      method: "PATCH", headers, body: JSON.stringify({ body }),
+    });
+    if (!updated.ok) throw new Error(`update comment: HTTP ${updated.status}`);
+    return warnings.length === 0 ? "resolved" : "updated";
+  }
+  if (warnings.length === 0) return "skipped";
+  const created = await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments`, {
+    method: "POST", headers, body: JSON.stringify({ body }),
+  });
+  if (!created.ok) throw new Error(`create comment: HTTP ${created.status}`);
+  return "created";
+}
+
+async function main() {
   const files = walk(".");
   const lockfileViolations = findWorkflowLockfileViolations(files);
   const pinningViolations = findPackageJsonPinningViolations(files);
   const missingLockfiles = (process.env.REQUIRE_LOCKFILE ?? "true") === "true" ? findMissingLockfiles(files) : [];
   const goWarnings = findGoIntegrityWarnings(files);
+  if ((process.env.GO_WARNING_PR_COMMENT ?? "true") === "true"
+      && process.env.PR_NUMBER && process.env.GITHUB_REPOSITORY && process.env.GITHUB_TOKEN) {
+    try {
+      await syncGoWarningPrComment({
+        fetchImpl: globalThis.fetch,
+        api: process.env.GITHUB_API_URL || "https://api.github.com",
+        repo: process.env.GITHUB_REPOSITORY,
+        pr: process.env.PR_NUMBER,
+        token: process.env.GITHUB_TOKEN,
+        warnings: goWarnings,
+      });
+    } catch (error) {
+      console.error(`Go integrity PR コメントの投稿に失敗しました（権限不足の可能性）: ${error.message}`);
+    }
+  }
   if (lockfileViolations.length === 0 && pinningViolations.length === 0 && missingLockfiles.length === 0) {
     console.log("dependency-policy: CI の lockfile 強制、package.json の厳密 pinning、lockfile の存在を確認しました ✅");
     emitGoWarnings(goWarnings);
@@ -182,4 +246,6 @@ function main() {
   process.exitCode = 1;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) main();
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+  main().catch((error) => { console.error(error); process.exitCode = 3; });
+}

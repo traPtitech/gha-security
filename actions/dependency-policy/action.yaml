@@ -4,6 +4,12 @@ inputs:
   require-lockfile:
     description: package.json と同じディレクトリにlockfileを必須にするか（library等はfalseで明示除外）
     default: "true"
+  go-warning-pr-comment:
+    description: Go integrity warningをPR上のsticky commentとして投稿するか
+    default: "true"
+  github-token:
+    description: PR comment投稿に使用するGitHub token
+    default: ${{ github.token }}
 runs:
   using: composite
   steps:
@@ -11,4 +17,7 @@ runs:
       shell: bash
       env:
         REQUIRE_LOCKFILE: ${{ inputs.require-lockfile }}
+        GO_WARNING_PR_COMMENT: ${{ inputs.go-warning-pr-comment }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: node "${GITHUB_ACTION_PATH}/src/check.mjs"
