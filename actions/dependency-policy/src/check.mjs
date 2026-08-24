@@ -157,29 +157,44 @@ function emitGoWarnings(warnings) {
 
 const GO_WARNING_COMMENT_MARKER = "<!-- gha-security/go-integrity-warning -->";
 
-function goWarningCommentBody(warnings) {
-  if (warnings.length === 0) return `${GO_WARNING_COMMENT_MARKER}\nGo integrity warning は解消されました ✅`;
-  const lines = [
-    GO_WARNING_COMMENT_MARKER,
-    `### ⚠️ Go integrity warning が ${warnings.length} 件あります`,
-    "",
+function warningExcerpt(warning, files) {
+  const lines = (files[warning.file] ?? "").split("\n");
+  const line = lines.find((value) => warning.reason.startsWith("GOSUMDB") ? /GOSUMDB\s*[:=]/.test(value) : /^\s*require\b/.test(value));
+  return line?.trim() || warning.file;
+}
+
+function policyCommentBody({ warnings, lockfileViolations = [], pinningViolations = [], missingLockfiles = [] }, files = {}) {
+  const failures = [
+    ...lockfileViolations.map((v) => ({ ...v, excerpt: v.command })),
+    ...pinningViolations.map((v) => ({ ...v, reason: `${v.section}.${v.name} は厳密versionではありません`, excerpt: `"${v.name}": "${v.spec}"` })),
+    ...missingLockfiles.map((file) => ({ file, reason: "対応するlockfileがありません", excerpt: (files[file] ?? "").split("\n").find(Boolean) || file })),
   ];
-  for (const warning of warnings) {
-    const file = warning.file.replaceAll("`", "\\`");
-    lines.push(`- \`${file}\` — ${warning.reason}`);
-  }
-  lines.push("", "この確認はwarning-onlyです。CIは失敗しませんが、go.sumとGOSUMDB設定を確認してください。");
+  if (warnings.length === 0 && failures.length === 0) return `${GO_WARNING_COMMENT_MARKER}\ndependency-policy の指摘は解消されました ✅`;
+  const lines = [GO_WARNING_COMMENT_MARKER, "### dependency-policy の検出結果", ""];
+  const append = (heading, findings, warning = false) => {
+    if (findings.length === 0) return;
+    lines.push(`#### ${warning ? "⚠️" : "❌"} ${heading}（${findings.length}件）`, "");
+    for (const finding of findings) {
+      const position = finding.line ? `:${finding.line}` : "";
+      lines.push(`- \`${finding.file.replaceAll("`", "\\`")}${position}\` — ${finding.reason}`);
+      lines.push("", "  ```text", `  ${finding.excerpt ?? warningExcerpt(finding, files)}`, "  ```", "");
+    }
+  };
+  append("CIを失敗させる違反", failures);
+  append("Go integrity warning（CIは継続）", warnings, true);
+  lines.push("このcommentは同一PR上で更新されます。warningの投稿失敗はCI結果を変えません。");
   return lines.join("\n");
 }
 
-export async function syncGoWarningPrComment({ fetchImpl, api, repo, pr, token, warnings }) {
+export async function syncGoWarningPrComment({ fetchImpl, api, repo, pr, token, warnings, lockfileViolations = [], pinningViolations = [], missingLockfiles = [], files = {} }) {
   const headers = {
     authorization: `Bearer ${token}`,
     accept: "application/vnd.github+json",
     "user-agent": "dependency-policy",
     "content-type": "application/json",
   };
-  const body = goWarningCommentBody(warnings);
+  const body = policyCommentBody({ warnings, lockfileViolations, pinningViolations, missingLockfiles }, files);
+  const hasFindings = warnings.length + lockfileViolations.length + pinningViolations.length + missingLockfiles.length > 0;
   const comments = [];
   for (let page = 1; ; page += 1) {
     const listed = await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments?per_page=100&page=${page}`, { headers });
@@ -194,9 +209,9 @@ export async function syncGoWarningPrComment({ fetchImpl, api, repo, pr, token, 
       method: "PATCH", headers, body: JSON.stringify({ body }),
     });
     if (!updated.ok) throw new Error(`update comment: HTTP ${updated.status}`);
-    return warnings.length === 0 ? "resolved" : "updated";
+    return hasFindings ? "updated" : "resolved";
   }
-  if (warnings.length === 0) return "skipped";
+  if (!hasFindings) return "skipped";
   const created = await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments`, {
     method: "POST", headers, body: JSON.stringify({ body }),
   });
@@ -220,6 +235,10 @@ async function main() {
         pr: process.env.PR_NUMBER,
         token: process.env.GITHUB_TOKEN,
         warnings: goWarnings,
+        lockfileViolations,
+        pinningViolations,
+        missingLockfiles,
+        files,
       });
     } catch (error) {
       console.error(`Go integrity PR コメントの投稿に失敗しました（権限不足の可能性）: ${error.message}`);
