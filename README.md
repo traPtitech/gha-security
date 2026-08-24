@@ -23,7 +23,7 @@ traPtitech のリポジトリで、レビューを経ない依存物の実行経
 | action | 内容 |
 |---|---|
 | `actions/cooldown-check` | npm系lockfile・`package.json`厳密指定・workflowの`uses:`に対するcooldown本体。npm `package-lock.json`では**同一file・同一installation path・同一version**の`resolved` / `integrity`変更をfailする。公開日時取得不能・上限超過はwarning。Go cooldownは行わず、checksum状態はdependency-policyへ委譲する |
-| `actions/dependency-policy` | `package.json` direct dependencyのsemver range / dist-tag、lockfile不在、workflowの明白なJS non-frozen installを拒否する。複雑なYAML/shell意味解釈は行わない。Goの`go.sum`不在・`GOSUMDB=off`はwarningする |
+| `actions/dependency-policy` | `package.json` direct dependencyのsemver range / dist-tag、lockfile不在、workflowの明白なJS non-frozen installを拒否する。複雑なYAML/shell意味解釈は行わない。Goの`go.sum`不在・`GOSUMDB=off`はwarning annotationとPR sticky comment（既定）で通知する |
 | `actions/pin-docker` | Dockerfile `FROM`、Compose `image:`、Actions `container.image` / `services.*.image` / `uses: docker://` のdigest固定。BuildKit全構文やremote build sourceの解析は対象外 |
 | `actions/setup-tools` | pinact / frizbee を checksum 検証付きでインストール（内部用） |
 
@@ -73,7 +73,7 @@ traPtitech のリポジトリで、レビューを経ない依存物の実行経
 
 - **PR のコードは実行しない**: pin-support はファイルの静的書き換えのみ。`pull_request_target` は使わない
 - **公開日時はregistry/APIの記録を利用するが、取得不能はwarning**: npm registry `time` / GitHub Releases `published_at` を使う。API障害・rate limit・release未作成でPRをfailしない
-- **Goのmodule integrityは既存機構を尊重する**: `go.sum`がない外部moduleと、repository内で明白な`GOSUMDB=off`をwarningする。Go moduleの公開日時cooldownやproxy lookupは行わない
+- **Goのmodule integrityは既存機構を尊重する**: `go.sum`がない外部moduleと、repository内で明白な`GOSUMDB=off`をwarning annotationとPR sticky commentで通知する。コメント投稿に必要な権限がないfork PRやAPI障害でも、warning検査自体は失敗しない。Go moduleの公開日時cooldownやproxy lookupは行わない
 - **npm artifact identityはcooldownから独立**: 同一versionの`resolved` / `integrity`差替えは、cooldown override・threshold 0・日時照会失敗とは別にfailする
 - **外部lookupはbounded**: cooldownは既定で1 PRあたり50件、各15秒まで。上限到達はwarningし、必要に応じて`max-lookups` / `lookup-timeout`をより小さくできる
 - **Docker registry egressは制限する**: `pin-docker` fixモードは既定で`docker.io`、`ghcr.io`、`quay.io`だけを解決する。private registryはcallerで明示許可する。1実行当たりの異なる解決は既定50件、各15秒までであり、checkモードはネットワークを使わない
