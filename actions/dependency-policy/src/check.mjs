@@ -180,9 +180,14 @@ export async function syncGoWarningPrComment({ fetchImpl, api, repo, pr, token, 
     "content-type": "application/json",
   };
   const body = goWarningCommentBody(warnings);
-  const listed = await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments?per_page=100`, { headers });
-  if (!listed.ok) throw new Error(`list comments: HTTP ${listed.status}`);
-  const comments = await listed.json();
+  const comments = [];
+  for (let page = 1; ; page += 1) {
+    const listed = await fetchImpl(`${api}/repos/${repo}/issues/${pr}/comments?per_page=100&page=${page}`, { headers });
+    if (!listed.ok) throw new Error(`list comments: HTTP ${listed.status}`);
+    const currentPage = await listed.json();
+    comments.push(...currentPage);
+    if (currentPage.length < 100) break;
+  }
   const existing = comments.find((comment) => typeof comment.body === "string" && comment.body.startsWith(GO_WARNING_COMMENT_MARKER));
   if (existing) {
     const updated = await fetchImpl(`${api}/repos/${repo}/issues/comments/${existing.id}`, {

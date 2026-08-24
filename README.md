@@ -23,7 +23,7 @@ traPtitech のリポジトリで、レビューを経ない依存物の実行経
 | action | 内容 |
 |---|---|
 | `actions/cooldown-check` | npm系lockfile・`package.json`厳密指定・workflowの`uses:`に対するcooldown本体。npm `package-lock.json`では**同一file・同一installation path・同一version**の`resolved` / `integrity`変更をfailする。公開日時取得不能・上限超過はwarning。Go cooldownは行わず、checksum状態はdependency-policyへ委譲する |
-| `actions/dependency-policy` | `package.json` direct dependencyのsemver range / dist-tag、lockfile不在、workflowの明白なJS non-frozen installを拒否する。複雑なYAML/shell意味解釈は行わない。Goの`go.sum`不在・`GOSUMDB=off`はwarning annotationとPR sticky comment（既定）で通知する |
+| `actions/dependency-policy` | `package.json` direct dependencyのsemver range / dist-tag、lockfile不在、workflowの明白なJS non-frozen installを拒否する。複雑なYAML/shell意味解釈は行わない。Goの`go.sum`不在・`GOSUMDB=off`はwarning annotationとPR sticky comment（既定）で通知する。PR commentだけを無効化する場合は`go-warning-pr-comment: false`を指定する |
 | `actions/pin-docker` | Dockerfile `FROM`、Compose `image:`、Actions `container.image` / `services.*.image` / `uses: docker://` のdigest固定。BuildKit全構文やremote build sourceの解析は対象外 |
 | `actions/setup-tools` | pinact / frizbee を checksum 検証付きでインストール（内部用） |
 
