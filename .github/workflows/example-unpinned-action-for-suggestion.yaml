@@ -1,0 +1,13 @@
+name: Example - unpinned Action for pinact suggestion
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      # pinact はこのmutable tagを40桁SHAにするsuggestionをPR上に投稿する。
+      - uses: actions/checkout@v4

@@ -1,0 +1,25 @@
+name: Demo - pinact suggestion for unpinned Action
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/example-unpinned-action-for-suggestion.yaml
+      - .github/workflows/demo-pinact-suggestion.yaml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pin-support-suggest:
+    uses: traPtitech/gha-security/.github/workflows/pin-support.yaml@3dd1a916fa09a4c0a4aa5f32b1dfef543bc9e6ae
+    with:
+      mode: suggest
+      pin-docker: false
+      pinact-exclude-regex: '^traPtitech/gha-security/'
+
+  pin-check-must-fail:
+    uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@3dd1a916fa09a4c0a4aa5f32b1dfef543bc9e6ae
+    with:
+      pin-docker: false
+      pinact-exclude-regex: '^traPtitech/gha-security/'
