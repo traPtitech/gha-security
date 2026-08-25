@@ -164,6 +164,14 @@ test("syncGoWarningPrComment creates, updates, and resolves one sticky PR commen
   assert.equal(await syncGoWarningPrComment({ ...common, warnings }), "created");
   assert.match(JSON.parse(calls.at(-1).options.body).body, /cmd\/tool\/go\.mod/);
   assert.match(JSON.parse(calls.at(-1).options.body).body, /```text/);
+  assert.equal(await syncGoWarningPrComment({
+    ...common,
+    warnings: [{ file: ".github/workflows/ci.yaml", reason: "GOSUMDB=off により Go checksum database が無効化されています" }],
+    files: { ".github/workflows/ci.yaml": "# GOSUMDB=off の説明コメント\nenv:\n  GOSUMDB: \"off\"\n" },
+  }), "created");
+  const goBody = JSON.parse(calls.at(-1).options.body).body;
+  assert.match(goBody, /GOSUMDB: "off"/);
+  assert.doesNotMatch(goBody, /説明コメント/);
   existing = [{ id: 7, body: "<!-- gha-security\/go-integrity-warning -->\nold" }];
   assert.equal(await syncGoWarningPrComment({ ...common, warnings: [], lockfileViolations: [{ file: ".github/workflows/ci.yaml", line: 9, command: "npm install", reason: "npm ci を使ってください" }] }), "updated");
   const failureBody = JSON.parse(calls.at(-1).options.body).body;
