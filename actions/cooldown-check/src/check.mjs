@@ -232,7 +232,12 @@ export async function run(ctx) {
       const [afterVersion] = (identity ?? "").split("\u0000");
       const versionChanged = label === "npm-lock" && beforeVersion !== afterVersion;
       if (!versionChanged && (flagNew || base.has(name)) && (detectRemoved || identity !== undefined) && base.get(name) !== identity) {
-        identityViolations.push({ eco: "identity", name: `${label}:${name}`, version: identity ?? "(removed)", file, reason: "artifact/source identity changed" });
+        const [, beforeResolved = "", beforeIntegrity = ""] = (base.get(name) ?? "").split("\u0000");
+        const [, afterResolved = "", afterIntegrity = ""] = (identity ?? "").split("\u0000");
+        identityViolations.push({
+          eco: "identity", name: `${label}:${name}`, version: identity ?? "(removed)", file,
+          reason: "artifact/source identity changed", beforeResolved, afterResolved, beforeIntegrity, afterIntegrity,
+        });
       }
     }
   };
@@ -391,8 +396,13 @@ async function main() {
     const identity = result.violations.filter((v) => v.eco === "identity");
     const cooldown = result.violations.filter((v) => v.eco !== "identity");
     if (identity.length > 0) {
-      lines.push(`### ❄️ cooldown-check: 依存のartifact/source identity変更が ${identity.length} 件見つかりました`, "");
-      lines.push(...identity.map((v) => `- \`${v.file}\`: \`${v.name}\`（${v.reason}）`));
+      lines.push(`### ❌ cooldown-check: 同じバージョンのartifact identityが変わった依存が ${identity.length} 件あります`, "");
+      for (const v of identity) {
+        const version = String(v.version).split("\u0000")[0];
+        const changed = [v.beforeResolved !== v.afterResolved && "取得元URL", v.beforeIntegrity !== v.afterIntegrity && "integrity"].filter(Boolean).join("・") || "artifact情報";
+        lines.push(`#### \`${v.name}\``, "", `- 場所: \`${v.file}\``, `- バージョン: \`${version}\`（変更なし）`, `- 理由: 同じバージョンのまま${changed}が変更されています。改ざんや意図しない取得元変更の可能性があるため、確認が必要です。`, "");
+        lines.push("```text", `変更項目: ${changed}`, "```");
+      }
     }
     if (cooldown.length > 0) {
       lines.push(`### ❄️ cooldown-check: 公開から日が浅いバージョンが ${cooldown.length} 件見つかりました`);
