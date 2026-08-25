@@ -1,0 +1,14 @@
+name: Demo - dependency policy violation fixture
+
+# 手動専用fixture。npm installはdependency-policyが拒否する。
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Intentional non-frozen install
+        run: npm install

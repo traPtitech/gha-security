@@ -1,0 +1,7 @@
+{
+  "name": "dogfood-dependency-policy-violation",
+  "private": true,
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}
