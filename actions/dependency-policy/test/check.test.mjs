@@ -167,7 +167,7 @@ test("syncGoWarningPrComment creates, updates, and resolves one sticky PR commen
   existing = [{ id: 7, body: "<!-- gha-security\/go-integrity-warning -->\nold" }];
   assert.equal(await syncGoWarningPrComment({ ...common, warnings: [], lockfileViolations: [{ file: ".github/workflows/ci.yaml", line: 9, command: "npm install", reason: "npm ci を使ってください" }] }), "updated");
   const failureBody = JSON.parse(calls.at(-1).options.body).body;
-  assert.match(failureBody, /CIを失敗させる違反/);
+  assert.match(failureBody, /dependency-policy: 修正が必要な項目/);
   assert.match(failureBody, /\.github\/workflows\/ci\.yaml:9/);
   assert.match(failureBody, /npm install/);
 
