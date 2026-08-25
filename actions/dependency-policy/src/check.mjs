@@ -159,7 +159,7 @@ const GO_WARNING_COMMENT_MARKER = "<!-- gha-security/go-integrity-warning -->";
 
 function warningExcerpt(warning, files) {
   const lines = (files[warning.file] ?? "").split("\n");
-  const line = lines.find((value) => warning.reason.startsWith("GOSUMDB") ? /GOSUMDB\s*[:=]/.test(value) : /^\s*require\b/.test(value));
+  const line = lines.find((value) => warning.reason.startsWith("GOSUMDB") ? /^\s*(?:export\s+)?GOSUMDB\s*[:=]/.test(value) : /^\s*require\b/.test(value));
   return line?.trim() || warning.file;
 }
 
