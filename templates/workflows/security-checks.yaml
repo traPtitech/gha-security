@@ -42,7 +42,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write # 違反の PR コメント投稿用（pr-comment: false なら read のみで可）
-    uses: traPtitech/gha-security/.github/workflows/cooldown-check.yaml@6bb89207cf517f2811cc0b4c4053a16aec47959b
+    uses: traPtitech/gha-security/.github/workflows/cooldown-check.yaml@4137fb75387547f926dd6ea3057f86c03c888c3c
     # with:
     #   pr-comment: false        # PR コメント通知を無効化する場合
     #   npm-min-age-days: 0      # npm公開日時cooldownだけを無効化（identityは継続）
