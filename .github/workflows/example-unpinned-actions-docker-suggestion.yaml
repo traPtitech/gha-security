@@ -1,0 +1,17 @@
+name: Example - unpinned workflow Docker references
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-alpine
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - uses: docker://alpine:3.20
