@@ -166,7 +166,7 @@ function warningExcerpt(warning, files) {
 function policyCommentBody({ warnings, lockfileViolations = [], pinningViolations = [], missingLockfiles = [] }, files = {}) {
   const failures = [
     ...lockfileViolations.map((v) => ({ ...v, title: "lockfileを更新しうるJSコマンド", excerpt: v.command, advice: "CIではlockfileを厳密に使うコマンドへ置き換えてください。" })),
-    ...pinningViolations.map((v) => ({ ...v, title: "直接dependencyが厳密なバージョンで固定されていない", reason: `${v.name} はsemver rangeまたはdist-tagで指定されています。完全なversionへ固定してください。`, excerpt: `"${v.name}": "${v.spec}"` })),
+    ...pinningViolations.map((v) => ({ ...v, title: "直接dependencyが厳密なバージョンで固定されていない", reason: `${v.name} は厳密なバージョンではありません。完全なversionへ固定してください。`, excerpt: `"${v.name}": "${v.spec}"` })),
     ...missingLockfiles.map((file) => ({ file, title: "対応するlockfileがない", reason: "同じディレクトリにlockfileがありません。", excerpt: "必要: package-lock.json / pnpm-lock.yaml / yarn.lock / bun.lock\n検出: lockfileなし" })),
   ];
   if (warnings.length === 0 && failures.length === 0) return `${GO_WARNING_COMMENT_MARKER}\ndependency-policy の指摘は解消されました ✅`;
@@ -190,7 +190,10 @@ function policyCommentBody({ warnings, lockfileViolations = [], pinningViolation
     lines.push("この確認はwarning-onlyです。CIは失敗しませんが、go.sumとGOSUMDB設定を確認してください。", "");
   }
   lines.push("このcommentは同一PR上で更新されます。commentの投稿失敗はCI結果を変えません。");
-  return lines.join("\n");
+  const body = lines.join("\n");
+  const maxCommentChars = 60000;
+  if (body.length <= maxCommentChars) return body;
+  return `${body.slice(0, maxCommentChars - 120)}\n\n---\n\n⚠️ 指摘が多いため、PR commentは先頭のみを表示しています。完全な一覧はcheck logを確認してください。`;
 }
 
 export async function syncGoWarningPrComment({ fetchImpl, api, repo, pr, token, warnings, lockfileViolations = [], pinningViolations = [], missingLockfiles = [], files = {} }) {

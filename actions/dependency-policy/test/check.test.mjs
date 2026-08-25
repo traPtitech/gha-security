@@ -171,6 +171,12 @@ test("syncGoWarningPrComment creates, updates, and resolves one sticky PR commen
   assert.match(failureBody, /\.github\/workflows\/ci\.yaml:9/);
   assert.match(failureBody, /npm install/);
 
+  const many = Array.from({ length: 500 }, (_, index) => ({ file: `packages/package-${index}/package.json`, section: "dependencies", name: `dependency-${index}`, spec: "^1.2.3" }));
+  assert.equal(await syncGoWarningPrComment({ ...common, warnings: [], pinningViolations: many }), "updated");
+  const boundedBody = JSON.parse(calls.at(-1).options.body).body;
+  assert.ok(boundedBody.length <= 60000);
+  assert.match(boundedBody, /指摘が多いため/);
+
   existing = Array.from({ length: 100 }, (_, id) => ({ id, body: `comment-${id}` }));
   const secondPage = [{ id: 101, body: "<!-- gha-security/go-integrity-warning -->\nold" }];
   const pagedFetch = async (url, options = {}) => {
