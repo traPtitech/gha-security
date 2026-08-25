@@ -1,0 +1,49 @@
+name: Demo - npm artifact identity CI comment
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/demo-npm-artifact-identity-ci-comment.yaml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  demonstrate-npm-artifact-identity-violation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: fixture
+        name: Create same-version integrity substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name demo-fixture
+          git config user.email demo-fixture@example.invalid
+          mkdir -p examples/dogfood/npm-artifact-ci
+          cat > examples/dogfood/npm-artifact-ci/package-lock.json <<'EOF'
+          {"name":"identity-demo","lockfileVersion":3,"packages":{"":{"dependencies":{"lodash":"4.17.21"}},"node_modules/lodash":{"version":"4.17.21","resolved":"https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz","integrity":"sha512-BASE"}}}
+          EOF
+          git add examples/dogfood/npm-artifact-ci/package-lock.json
+          git commit -m 'demo base artifact'
+          echo "base-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('examples/dogfood/npm-artifact-ci/package-lock.json')
+          p.write_text(p.read_text().replace('sha512-BASE', 'sha512-REPLACED'))
+          PY
+          git add examples/dogfood/npm-artifact-ci/package-lock.json
+          git commit -m 'demo substituted artifact'
+          echo "head-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: ./actions/cooldown-check
+        with:
+          base-sha: ${{ steps.fixture.outputs.base-sha }}
+          head-sha: ${{ steps.fixture.outputs.head-sha }}
+          npm-min-age-days: "0"
+          actions-min-age-days: "0"
+          max-lookups: "0"
+          pr-comment: "true"
