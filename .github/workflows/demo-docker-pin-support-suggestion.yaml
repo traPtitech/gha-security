@@ -1,0 +1,25 @@
+name: Demo - Docker pin-support suggestion
+
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/docker-pin-support/Dockerfile
+      - .github/workflows/demo-docker-pin-support-suggestion.yaml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pin-support-suggest:
+    uses: traPtitech/gha-security/.github/workflows/pin-support.yaml@94e5f56a37b73285f39ba22455e82cabc6f4d79d
+    with:
+      mode: suggest
+      pin-docker: true
+      pinact-exclude-regex: '^traPtitech/gha-security/'
+
+  pin-check-must-fail:
+    uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@94e5f56a37b73285f39ba22455e82cabc6f4d79d
+    with:
+      pin-docker: true
+      pinact-exclude-regex: '^traPtitech/gha-security/'
