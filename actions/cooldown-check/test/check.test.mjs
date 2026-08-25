@@ -177,6 +177,11 @@ test("run(): flags fresh versions, respects thresholds and excludes", async () =
     "npm:fresh-pkg@2.0.0",
   ]);
   assert.equal(result.warnings.length, 0);
+  const identityViolation = result.violations.find((v) => v.eco === "identity");
+  assert.equal(identityViolation.beforeResolved, "https://registry.example/old.tgz");
+  assert.equal(identityViolation.afterResolved, "https://registry.example/replaced.tgz");
+  assert.equal(identityViolation.beforeIntegrity, "sha512-old");
+  assert.equal(identityViolation.afterIntegrity, "sha512-replaced");
   // 組織内パッケージも既定で照会される
   assert.equal(result.checked, 4);
 
