@@ -1,0 +1,27 @@
+name: Demo - npm cooldown violation
+
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/npm-cooldown/**
+      - .github/workflows/demo-npm-cooldown-violation.yaml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  demonstrate-npm-cooldown-violation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./actions/cooldown-check
+        with:
+          npm-min-age-days: "99999"
+          actions-min-age-days: "0"
+          max-lookups: "1"
+          lookup-timeout: "15"
+          pr-comment: "true"
