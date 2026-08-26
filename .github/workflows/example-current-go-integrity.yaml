@@ -1,0 +1,11 @@
+name: Example - current Go integrity warnings
+on:
+  workflow_dispatch:
+permissions: {}
+env:
+  GOSUMDB: "off"
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

@@ -1,0 +1,20 @@
+name: Demo - current Go integrity warnings
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/current-go-integrity/go.mod
+      - .github/workflows/example-current-go-integrity.yaml
+      - .github/workflows/demo-current-go-integrity.yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  demonstrate-current-go-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: traPtitech/gha-security/actions/dependency-policy@5613481ed120213d620917ea74c585f931a8e45e
+        with:
+          require-lockfile: false
