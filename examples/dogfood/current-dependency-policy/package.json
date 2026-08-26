@@ -1,0 +1,5 @@
+{
+  "name": "current-dependency-policy-demo",
+  "private": true,
+  "dependencies": { "lodash": "^4.17.21" }
+}

@@ -1,0 +1,18 @@
+name: Demo - current dependency-policy inline comments
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/current-dependency-policy/package.json
+      - .github/workflows/example-current-dependency-policy.yaml
+      - .github/workflows/demo-current-dependency-policy.yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  demonstrate-current-dependency-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: traPtitech/gha-security/actions/dependency-policy@5613481ed120213d620917ea74c585f931a8e45e
