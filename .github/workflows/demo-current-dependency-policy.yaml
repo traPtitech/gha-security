@@ -15,4 +15,4 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: traPtitech/gha-security/actions/dependency-policy@6b2e36a57bfe87ebcd2d2d5401caabe8b097f703
+      - uses: traPtitech/gha-security/actions/dependency-policy@5613481ed120213d620917ea74c585f931a8e45e
