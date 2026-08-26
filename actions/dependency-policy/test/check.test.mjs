@@ -166,6 +166,17 @@ test("makeReviewdogDiagnostics maps policy failures to their source lines", () =
 });
 
 
+test("makeReviewdogDiagnostics uses the finding dependency section", () => {
+  const diagnostics = makeReviewdogDiagnostics({
+    pinningViolations: [{ file: "package.json", section: "devDependencies", name: "shared", spec: "^2.0.0" }],
+    files: {
+      "package.json": '{\n  "dependencies": {\n    "shared": "1.0.0"\n  },\n  "devDependencies": {\n    "shared": "^2.0.0"\n  }\n}',
+    },
+  });
+  assert.equal(diagnostics[0].location.range.start.line, 6);
+});
+
+
 test("syncGoWarningPrComment creates, updates, and resolves one sticky PR comment", async () => {
   const calls = [];
   const response = (body, ok = true, status = 200) => ({ ok, status, json: async () => body });

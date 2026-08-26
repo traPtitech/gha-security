@@ -155,9 +155,20 @@ function emitGoWarnings(warnings) {
   }
 }
 
-function lineForPackageSpec(text, name) {
-  const index = text.split("\n").findIndex((line) => new RegExp(`^\\s*["']${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']\\s*:`).test(line));
-  return index >= 0 ? index + 1 : 1;
+function lineForPackageSpec(text, section, name) {
+  const lines = text.split("\n");
+  const sectionHeader = new RegExp(`^\\s*"${section}"\\s*:\\s*\\{`);
+  let sectionIndent = null;
+  for (const [index, line] of lines.entries()) {
+    if (sectionIndent === null) {
+      if (sectionHeader.test(line)) sectionIndent = indentation(line);
+      continue;
+    }
+    const indent = indentation(line);
+    if (indent <= sectionIndent && /^\s*}/.test(line)) break;
+    if (line.trimStart().startsWith(`"${name}"`)) return index + 1;
+  }
+  return 1;
 }
 
 /** Convert blocking policy findings to reviewdog RDJSON diagnostics. */
@@ -170,7 +181,7 @@ export function makeReviewdogDiagnostics({ lockfileViolations = [], pinningViola
     })),
     ...pinningViolations.map((v) => ({
       message: `直接dependencyを厳密なバージョンへ固定してください: ${v.name} は ${v.spec} です`,
-      location: { path: v.file, range: { start: { line: lineForPackageSpec(files[v.file] ?? "", v.name), column: 1 } } },
+      location: { path: v.file, range: { start: { line: lineForPackageSpec(files[v.file] ?? "", v.section, v.name), column: 1 } } },
       severity: "ERROR",
     })),
     ...missingLockfiles.map((file) => ({
