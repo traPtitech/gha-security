@@ -11,4 +11,5 @@ jobs:
         image: postgres:16
     steps:
       - uses: actions/checkout@v4
+      - run: echo separator
       - uses: docker://alpine:3.20
