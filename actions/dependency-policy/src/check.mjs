@@ -274,7 +274,10 @@ async function main() {
   const goWarnings = findGoIntegrityWarnings(files);
   if (process.env.REVIEWDOG_REPORT) {
     const diagnostics = makeReviewdogDiagnostics({ lockfileViolations, pinningViolations, missingLockfiles, files });
-    writeFileSync(process.env.REVIEWDOG_REPORT, diagnostics.map((diagnostic) => JSON.stringify(diagnostic)).join("\n") + (diagnostics.length ? "\n" : ""));
+    writeFileSync(process.env.REVIEWDOG_REPORT, JSON.stringify({
+      source: { name: "dependency-policy" },
+      diagnostics,
+    }) + "\n");
   }
   if ((process.env.GO_WARNING_PR_COMMENT ?? "true") === "true"
       && process.env.PR_NUMBER && process.env.GITHUB_REPOSITORY && process.env.GITHUB_TOKEN) {
