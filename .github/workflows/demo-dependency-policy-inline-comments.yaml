@@ -19,4 +19,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Detect intentional policy violations and post CI comments
-        uses: traPtitech/gha-security/actions/dependency-policy@ef80b71f92f0c78c07f2422ddd8b81a0d1163a6d
+        uses: traPtitech/gha-security/actions/dependency-policy@a93cbce12c64de5ee451cfd3118caeab4530cdca
