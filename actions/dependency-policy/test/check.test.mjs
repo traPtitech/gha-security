@@ -247,7 +247,7 @@ test("CLI exits 1 for policy violations, exits 0 when clean, and ignores symlink
     const reviewdogReport = join(root, "dependency-policy.rdjson");
     result = spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env: { ...process.env, REQUIRE_LOCKFILE: "false", REVIEWDOG_REPORT: reviewdogReport } });
     assert.equal(result.status, 1);
-    const diagnostics = readFileSync(reviewdogReport, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const diagnostics = JSON.parse(readFileSync(reviewdogReport, "utf8")).diagnostics;
     assert.deepEqual(diagnostics.map((diagnostic) => diagnostic.location.path), [".github/workflows/ci.yaml"]);
 
     writeFileSync(join(root, ".github/workflows/ci.yaml"), "- run: npm ci\n");
