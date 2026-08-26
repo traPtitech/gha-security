@@ -1,0 +1,21 @@
+name: Demo - current npm cooldown comment
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/current-cooldown-only/package-lock.json
+      - .github/workflows/demo-current-npm-cooldown.yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  demonstrate-current-npm-cooldown:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: traPtitech/gha-security/actions/cooldown-check@5613481ed120213d620917ea74c585f931a8e45e
+        with:
+          npm-min-age-days: 99999
+          actions-min-age-days: 0
