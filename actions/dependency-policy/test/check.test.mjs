@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import {
   findWorkflowLockfileViolations, findPackageJsonPinningViolations,
   findMissingLockfiles, findGoIntegrityWarnings, syncGoWarningPrComment,
+  makeReviewdogDiagnostics,
 } from "../src/check.mjs";
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
@@ -147,6 +148,24 @@ test("findGoIntegrityWarnings reports missing go.sum and repository GOSUMDB=off"
   ]);
 });
 
+test("makeReviewdogDiagnostics maps policy failures to their source lines", () => {
+  const diagnostics = makeReviewdogDiagnostics({
+    lockfileViolations: [{ file: ".github/workflows/ci.yaml", line: 9, command: "npm install", reason: "npm ci を使ってください" }],
+    pinningViolations: [{ file: "package.json", section: "dependencies", name: "lodash", spec: "^4.17.21" }],
+    missingLockfiles: ["apps/web/package.json"],
+    files: {
+      "package.json": '{\n  "dependencies": {\n    "lodash": "^4.17.21"\n  }\n}',
+      "apps/web/package.json": '{}',
+    },
+  });
+  assert.deepEqual(diagnostics.map(({ message, location }) => ({ message, path: location.path, line: location.range.start.line })), [
+    { message: "lockfileを更新しうるJSコマンド: npm ci を使ってください", path: ".github/workflows/ci.yaml", line: 9 },
+    { message: "直接dependencyを厳密なバージョンへ固定してください: lodash は ^4.17.21 です", path: "package.json", line: 3 },
+    { message: "対応するlockfileがありません。package-lock.json / pnpm-lock.yaml / yarn.lock / bun.lock を追加してください", path: "apps/web/package.json", line: 1 },
+  ]);
+});
+
+
 test("syncGoWarningPrComment creates, updates, and resolves one sticky PR comment", async () => {
   const calls = [];
   const response = (body, ok = true, status = 200) => ({ ok, status, json: async () => body });
@@ -214,6 +233,11 @@ test("CLI exits 1 for policy violations, exits 0 when clean, and ignores symlink
     let result = spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8" });
     assert.equal(result.status, 1);
     assert.match(result.stdout, /npm install/);
+    const reviewdogReport = join(root, "dependency-policy.rdjson");
+    result = spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env: { ...process.env, REQUIRE_LOCKFILE: "false", REVIEWDOG_REPORT: reviewdogReport } });
+    assert.equal(result.status, 1);
+    const diagnostics = readFileSync(reviewdogReport, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(diagnostics.map((diagnostic) => diagnostic.location.path), [".github/workflows/ci.yaml"]);
 
     writeFileSync(join(root, ".github/workflows/ci.yaml"), "- run: npm ci\n");
     result = spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8" });

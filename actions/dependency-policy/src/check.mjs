@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const WORKFLOW_PATH = /^\.github\/workflows\/[^/]+\.ya?ml$/;
@@ -155,6 +155,32 @@ function emitGoWarnings(warnings) {
   }
 }
 
+function lineForPackageSpec(text, name) {
+  const index = text.split("\n").findIndex((line) => new RegExp(`^\\s*["']${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']\\s*:`).test(line));
+  return index >= 0 ? index + 1 : 1;
+}
+
+/** Convert blocking policy findings to reviewdog RDJSON diagnostics. */
+export function makeReviewdogDiagnostics({ lockfileViolations = [], pinningViolations = [], missingLockfiles = [], files = {} }) {
+  return [
+    ...lockfileViolations.map((v) => ({
+      message: `lockfileを更新しうるJSコマンド: ${v.reason}`,
+      location: { path: v.file, range: { start: { line: v.line, column: 1 } } },
+      severity: "ERROR",
+    })),
+    ...pinningViolations.map((v) => ({
+      message: `直接dependencyを厳密なバージョンへ固定してください: ${v.name} は ${v.spec} です`,
+      location: { path: v.file, range: { start: { line: lineForPackageSpec(files[v.file] ?? "", v.name), column: 1 } } },
+      severity: "ERROR",
+    })),
+    ...missingLockfiles.map((file) => ({
+      message: "対応するlockfileがありません。package-lock.json / pnpm-lock.yaml / yarn.lock / bun.lock を追加してください",
+      location: { path: file, range: { start: { line: 1, column: 1 } } },
+      severity: "ERROR",
+    })),
+  ];
+}
+
 const GO_WARNING_COMMENT_MARKER = "<!-- gha-security/go-integrity-warning -->";
 
 function warningExcerpt(warning, files) {
@@ -235,6 +261,10 @@ async function main() {
   const pinningViolations = findPackageJsonPinningViolations(files);
   const missingLockfiles = (process.env.REQUIRE_LOCKFILE ?? "true") === "true" ? findMissingLockfiles(files) : [];
   const goWarnings = findGoIntegrityWarnings(files);
+  if (process.env.REVIEWDOG_REPORT) {
+    const diagnostics = makeReviewdogDiagnostics({ lockfileViolations, pinningViolations, missingLockfiles, files });
+    writeFileSync(process.env.REVIEWDOG_REPORT, diagnostics.map((diagnostic) => JSON.stringify(diagnostic)).join("\n") + (diagnostics.length ? "\n" : ""));
+  }
   if ((process.env.GO_WARNING_PR_COMMENT ?? "true") === "true"
       && process.env.PR_NUMBER && process.env.GITHUB_REPOSITORY && process.env.GITHUB_TOKEN) {
     try {

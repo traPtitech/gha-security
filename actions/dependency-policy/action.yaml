@@ -8,16 +8,41 @@ inputs:
     description: Go integrity warningをPR上のsticky commentとして投稿するか
     default: "true"
   github-token:
-    description: PR comment投稿に使用するGitHub token
+    description: PR comment・reviewdog投稿に使用するGitHub token
     default: ${{ github.token }}
 runs:
   using: composite
   steps:
     - name: Check dependency policy
+      id: policy
+      continue-on-error: true
       shell: bash
       env:
         REQUIRE_LOCKFILE: ${{ inputs.require-lockfile }}
         GO_WARNING_PR_COMMENT: ${{ inputs.go-warning-pr-comment }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        REVIEWDOG_REPORT: ${{ runner.temp }}/dependency-policy.rdjson
       run: node "${GITHUB_ACTION_PATH}/src/check.mjs"
+
+    - name: Set up reviewdog
+      if: always() && github.event_name == 'pull_request' && steps.policy.outcome == 'failure'
+      uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1.5.0
+      with:
+        reviewdog_version: v0.21.0
+
+    - name: Post inline dependency-policy findings
+      if: always() && github.event_name == 'pull_request' && steps.policy.outcome == 'failure'
+      continue-on-error: true
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
+        REVIEWDOG_REPORT: ${{ runner.temp }}/dependency-policy.rdjson
+      run: |
+        test -s "$REVIEWDOG_REPORT" || exit 0
+        reviewdog -f=rdjson -reporter=github-pr-review -filter-mode=added -level=error -fail-level=none -name=dependency-policy < "$REVIEWDOG_REPORT"
+
+    - name: Fail for dependency-policy violations
+      if: steps.policy.outcome == 'failure'
+      shell: bash
+      run: exit 1
