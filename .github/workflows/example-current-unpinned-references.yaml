@@ -1,0 +1,15 @@
+name: Example - current unpinned references
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo separator
+      - uses: docker://alpine:3.20

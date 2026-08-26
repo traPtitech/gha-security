@@ -1,0 +1,22 @@
+name: Demo - current pinning suggestions
+on:
+  pull_request:
+    paths:
+      - examples/dogfood/current-pinning/Dockerfile
+      - .github/workflows/example-current-unpinned-references.yaml
+      - .github/workflows/demo-current-pinning-suggestions.yaml
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  suggest:
+    uses: traPtitech/gha-security/.github/workflows/pin-support.yaml@5613481ed120213d620917ea74c585f931a8e45e
+    with:
+      mode: suggest
+      pin-docker: true
+      pinact-exclude-regex: '^traPtitech/gha-security/'
+  must-fail:
+    uses: traPtitech/gha-security/.github/workflows/pin-check.yaml@5613481ed120213d620917ea74c585f931a8e45e
+    with:
+      pin-docker: true
+      pinact-exclude-regex: '^traPtitech/gha-security/'
