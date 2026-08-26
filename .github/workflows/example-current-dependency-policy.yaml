@@ -1,0 +1,9 @@
+name: Example - current dependency-policy violations
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm install
